@@ -1,0 +1,650 @@
+diff --git a/system/ScriptLoader.cpp b/system/ScriptLoader.cpp
+index f30904e..2c2f5cf 100644
+--- a/system/ScriptLoader.cpp
++++ b/system/ScriptLoader.cpp
+
+@@ -474,6 +351,7 @@ extern void AddSC_boss_warp_splinter();
+ extern void AddSC_boss_kaelthas();                          // TK, the_eye
+ extern void AddSC_boss_void_reaver();
+ extern void AddSC_boss_high_astromancer_solarian();
++extern void AddSC_boss_alar();
+ extern void AddSC_instance_the_eye();
+ extern void AddSC_the_eye();
+ extern void AddSC_boss_gatewatcher_iron_hand();             // TK, the_mechanar
+
+@@ -964,6 +720,7 @@ void AddScripts()
+     AddSC_boss_kaelthas();                                  // TK, the_eye
+     AddSC_boss_void_reaver();
+     AddSC_boss_high_astromancer_solarian();
++    AddSC_boss_alar();
+     AddSC_instance_the_eye();
+     AddSC_the_eye();
+     AddSC_boss_gatewatcher_iron_hand();                     // TK, the_mechanar
+diff --git a/scripts/outland/tempest_keep/the_eye/boss_alar.cpp b/scripts/outland/tempest_keep/the_eye/boss_alar.cpp
+new file mode 100644
+--- /dev/null
++++ b/scripts/outland/tempest_keep/the_eye/boss_alar.cpp
+@@ -0,0 +1,623 @@
++/* Copyright (C) 2006 - 2011 ScriptDev2 <http://www.scriptdev2.com/>
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++/* ScriptData
++SDName: Boss_Alar
++SD%Complete: 95
++SDComment: Minor weaknesses
++SDCategory: The Eye
++EndScriptData */
++
++#include "precompiled.h"
++#include "the_eye.h"
++#include "TemporarySummon.h"
++
++enum PHASES
++{
++    PHASE_NONE,
++    PHASE_PLATTFORME,
++    PHASE_PLATTFORME_MOVEMENT,
++    PHASE_MIDDLE,
++};
++
++enum DIVE_BOMB
++{
++    DIVE_BOMB_NONE,
++    DIVE_BOMB_FLIGHT_UP,
++    DIVE_BOMB_FLIGHT_DOWN,
++    DIVE_BOMB_SUMMON_ADDS,
++    DIVE_BOMB_REBIRTH,
++};
++
++enum
++{
++    // spells all phases
++    SPELL_FLAME_BUFFET = 34121,
++
++    // spells phase one
++    SPELL_FLAME_QUILLS  = 34229,
++    SPELL_REBIRTH_HEAL  = 34342,
++    SPELL_EMBER_BLAST   = 34341,
++
++    // spells phase two
++    SPELL_MELT_ARMOR    = 35410,
++    SPELL_CHARGE        = 35412,
++    SPELL_REBIRTH       = 35369,
++    SPELL_FLAME_PATCH   = 35380,
++    SPELL_DIVE_BOMB_VISUAL = 35367,
++    SPELL_DIVE_BOMB     = 35181,
++    SPELL_ENRAGE        = 26662,
++
++    TIME_AT_PLATTFORME  = 30000,
++    MAX_PLATTFORMES     = 5,
++
++    NPC_EMBER_OF_ALAR   = 19551,
++    NPC_FLAME_PATCH_ALAR = 20602,
++
++    MODEL_INVISIBLE     = 17612,
++
++};
++
++struct sWaypoints
++{
++    float m_fX, m_fY, m_fZ;
++};
++
++// alar movepoints (phase1)
++static sWaypoints m_aPlattformeLocs[MAX_PLATTFORMES] = 
++{
++    { 340.15f,      58.655f,    17.713f },
++    { 383.629f,     28.640f,    17.713f },
++    { 384.223f,     -30.388f,   17.713f },
++    { 341.682f,     -56.386f,   17.713f },
++    { 331,          0.7f,       45 }
++};
++
++// add spawn positions on plattformes
++static sWaypoints m_AddSpawnLocs[MAX_PLATTFORMES - 1] =
++{
++    { 333.514f,      82.109f,   20.396f },
++    { 406.099f,      41.680f,   20.179f },
++    { 404.420f,     -43.207f,   20.179f },
++    { 335.362f,     -81.369f,   20.264f },
++};
++
++// alar move position center
++static sWaypoints m_MiddleLoc = { 331.412f, -0.375f, -2.389f };
++
++struct MANGOS_DLL_DECL boss_alarAI : public ScriptedAI
++{
++    boss_alarAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        m_uiDefaultSpeedRate = m_creature->GetSpeedRate(MOVE_FLIGHT);
++        m_uiDefaultModelID = m_creature->GetDisplayId();
++        Reset();
++    }
++
++    PHASES m_Phase;
++    DIVE_BOMB m_DiveBomb;
++    std::list<uint64> m_luiFlamePatchGUIDs;
++
++    uint32 m_uiDefaultSpeedRate;
++    uint32 m_uiDefaultModelID;
++    uint32 m_uiPlattformeTimer;
++    uint32 m_uiEnrageTimer;
++    uint32 m_uiMeltArmorTimer;
++    uint32 m_uiFlamePatchTimer;
++    uint32 m_uiChargeTimer;
++    uint32 m_uiDiveBombTimer;
++    uint32 m_uiPlattformeTransitionTime;
++    uint32 m_uiFlameBuffetTimer;
++    uint32 m_uiPhase2Timer;
++    uint8 m_uiPlattforme;
++
++    bool m_bCastFlameQuills;
++
++    ScriptedInstance* m_pInstance;
++
++
++    void Reset()
++    {
++        UnsummonAllFlamePatches();
++        m_pInstance->SetData(TYPE_ALAR, NOT_STARTED);
++
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++        m_creature->GetMotionMaster()->MoveWaypoint();
++        if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE))
++            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++        if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
++            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++        if (m_creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_DEAD))
++            m_creature->RemoveFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_DEAD);
++
++        m_creature->SetPrefereMeleeTargets();
++        SetCombatMovement(false);
++
++        m_creature->SetSpeedRate(MOVE_FLIGHT, m_uiDefaultSpeedRate);
++        m_creature->SetDisplayId(m_uiDefaultModelID);
++
++        m_Phase = PHASE_NONE;
++        m_DiveBomb = DIVE_BOMB_NONE;
++        m_uiEnrageTimer = 10*MINUTE*IN_MILLISECONDS;
++        m_uiPlattforme = 0;
++        m_uiPhase2Timer = 0;
++        
++        // abilities
++        m_uiFlameBuffetTimer = 2500;
++        m_uiMeltArmorTimer = 60000;
++        m_uiChargeTimer = 35000;
++        m_uiDiveBombTimer = 45000;
++        m_uiFlamePatchTimer = urand(15000, 40000);
++
++        m_bCastFlameQuills  = false;
++    }
++
++    void JustDied(Unit *pWho)
++    {
++        m_creature->FallGround();
++        UnsummonAllFlamePatches();
++        m_pInstance->SetData(TYPE_ALAR, DONE);
++    }
++
++    void UnsummonAllFlamePatches()
++    {
++        if (m_luiFlamePatchGUIDs.empty())
++            return;
++
++        for (std::list<uint64>::iterator itr = m_luiFlamePatchGUIDs.begin(); itr != m_luiFlamePatchGUIDs.end(); ++itr)
++        {
++            if (TemporarySummon *pTemp = (TemporarySummon*)m_creature->GetMap()->GetCreature(*itr))
++                pTemp->UnSummon();
++        }
++        m_luiFlamePatchGUIDs.clear();
++    }
++
++    void DamageTaken(Unit *pWho, uint32 &uiDamage)
++    {
++        if (m_Phase > PHASE_PLATTFORME_MOVEMENT || uiDamage < m_creature->GetHealth())
++            return;
++
++        uiDamage = 0;
++        m_creature->StopMoving();
++        m_creature->GetMotionMaster()->Clear();
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++        DoCastSpellIfCan(m_creature, SPELL_EMBER_BLAST);
++        m_Phase = PHASE_PLATTFORME;
++    }
++
++    void Aggro(Unit *pWho)
++    {
++        m_uiPlattformeTimer = 0;
++        m_creature->SetInCombatWithZone();
++        m_Phase = PHASE_PLATTFORME;
++        m_creature->GetMotionMaster()->MoveIdle();
++        m_creature->SetSpeedRate(MOVE_FLIGHT, 5);
++        m_pInstance->SetData(TYPE_ALAR, IN_PROGRESS);
++    }
++
++    bool DoAutoAttack( const uint32 uiDiff )
++    {
++        if (DoMeleeAttackIfReady())
++            return true;
++        else if (!m_creature->CanReachWithMeleeAttack(m_creature->getVictim()))
++            return DoCastSpellInsteadMeleeAttack( uiDiff );
++
++        return false;
++    }
++
++    bool DoCastSpellInsteadMeleeAttack( const uint32 uiDiff )
++    {
++        if (m_uiFlameBuffetTimer <= uiDiff)
++		{
++            if (DoCastSpellIfCan(m_creature, SPELL_FLAME_BUFFET) == CAST_OK)
++			    return true;
++		}
++		else
++			m_uiFlameBuffetTimer -= uiDiff;
++
++        return false;
++    }
++
++    void SummonedCreatureJustDied(Creature *pCreature)
++    {
++        // if ember of alar dies in second phase, reduce alars health
++        if (m_Phase == PHASE_MIDDLE && pCreature->GetEntry() == NPC_EMBER_OF_ALAR && m_creature->isAlive())
++            m_creature->SetHealthPercent(m_creature->GetHealthPercent() - 2);
++    }
++
++    void UpdateNextPlattforme()
++    {
++        // if current Plattforme not middle fly clockwise or to the middle
++        if (m_uiPlattforme < MAX_PLATTFORMES - 1)
++        {
++            uint8 uiChance;
++            // if at Plattforme 4 chance is higher to fly to the middle
++            if (m_uiPlattforme == 3)
++                uiChance = 2;
++            else
++                uiChance = 5;
++
++            //chance to fly to the middle
++            if (urand(0, uiChance))
++            {
++                m_uiPlattforme++;
++                if (m_uiPlattforme >= MAX_PLATTFORMES - 1)
++                    m_uiPlattforme = 0;
++            }
++            else
++                m_uiPlattforme = 4;
++        }
++        // if cur plattforme is the middle, fly to plattforme 1 or 4
++        else
++        {
++            if (urand(0, 1))
++                m_uiPlattforme = 0;
++            else
++                m_uiPlattforme = 3;
++        }
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++        switch(m_Phase)
++        {
++        case PHASE_NONE:
++            break;
++
++            // phase 1, fight
++        case PHASE_PLATTFORME:
++            if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE))
++            {
++                m_creature->NearTeleportTo(m_MiddleLoc.m_fX, m_MiddleLoc.m_fY, m_MiddleLoc.m_fZ, m_creature->GetOrientation());
++                m_creature->SetFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_DEAD);
++                m_Phase = PHASE_MIDDLE;
++                m_uiPhase2Timer = 10000;
++                m_creature->SetDisplayId(MODEL_INVISIBLE);
++                m_creature->InterruptNonMeleeSpells(false);
++                return;
++            }
++            if (m_uiPlattformeTimer <= uiDiff)
++            {
++                m_creature->InterruptNonMeleeSpells(false);
++                m_creature->GetMotionMaster()->Clear();
++                m_creature->GetMotionMaster()->MovePoint(m_uiPlattforme, m_aPlattformeLocs[m_uiPlattforme].m_fX, m_aPlattformeLocs[m_uiPlattforme].m_fY, m_aPlattformeLocs[m_uiPlattforme].m_fZ);
++
++                m_uiPlattformeTimer = TIME_AT_PLATTFORME;
++                m_Phase = PHASE_PLATTFORME_MOVEMENT;
++                    
++                m_bCastFlameQuills  = false;
++                m_uiFlameBuffetTimer = 2500;
++                return;
++            }
++            else
++                m_uiPlattformeTimer -= uiDiff;
++
++            // return if casting m_bCastFlameQuills
++            if (m_bCastFlameQuills)
++                return;
++
++            // phase 1 abilities
++
++            //if melee is in range do meleeattack, otherwise cast flame buffet	
++			if (DoAutoAttack( uiDiff ))
++                m_uiFlameBuffetTimer = 2500;
++
++            break;
++
++            // phase 1, plattforme moving
++        case PHASE_PLATTFORME_MOVEMENT:
++            if (m_creature->GetDistance(m_aPlattformeLocs[m_uiPlattforme].m_fX, m_aPlattformeLocs[m_uiPlattforme].m_fY, m_aPlattformeLocs[m_uiPlattforme].m_fZ) <= 2)
++            {
++                // if is in middle
++                if (m_uiPlattforme == 4)
++                {
++                    DoCastSpellIfCan(m_creature, SPELL_FLAME_QUILLS);
++                    m_bCastFlameQuills = true;
++                    m_uiPlattformeTimer = 10000;
++                }
++                else
++                    m_creature->SummonCreature(NPC_EMBER_OF_ALAR, m_AddSpawnLocs[m_uiPlattforme].m_fX, m_AddSpawnLocs[m_uiPlattforme].m_fY, m_AddSpawnLocs[m_uiPlattforme].m_fZ, m_creature->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000)->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++                
++                UpdateNextPlattforme();
++                m_Phase = PHASE_PLATTFORME;
++            }
++            break;
++            
++            //phase 2
++        case PHASE_MIDDLE:        
++            if (m_uiPhase2Timer > uiDiff)
++            {
++                m_uiPhase2Timer -= uiDiff;
++                return;
++            }
++
++            // remove flags from phase 1 and cast rebirth
++            if (m_creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_DEAD))
++            {
++                m_creature->RemoveFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_DEAD);
++                if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE))
++                    m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++                if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
++                    m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++                SetCombatMovement(true);
++                m_creature->SetPrefereMeleeTargets(false);
++                m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim());
++                m_creature->SetDisplayId(m_uiDefaultModelID);
++                m_creature->SetSpeedRate(MOVE_FLIGHT, 3);
++                DoCastSpellIfCan(m_creature, SPELL_REBIRTH_HEAL);
++                m_uiFlameBuffetTimer = 5000;
++            }
++
++            // phase2 abilities
++            //
++            // Enrage
++            if (m_uiEnrageTimer <= uiDiff)
++            {
++                if (DoCastSpellIfCan(m_creature, SPELL_ENRAGE, CAST_INTERRUPT_PREVIOUS) == CAST_OK)
++                    m_uiEnrageTimer = 10*MINUTE*IN_MILLISECONDS;
++            }
++            else
++                m_uiEnrageTimer -= uiDiff;
++
++            switch (m_DiveBomb)
++            {
++            case DIVE_BOMB_FLIGHT_UP:
++                if (m_creature->GetDistance(m_aPlattformeLocs[4].m_fX, m_aPlattformeLocs[4].m_fY, m_aPlattformeLocs[4].m_fZ) <= 4)
++                {
++                    if (DoCastSpellIfCan(m_creature, SPELL_DIVE_BOMB_VISUAL) == CAST_OK)
++                    {
++                        m_uiDiveBombTimer = 2500;
++                        m_DiveBomb = DIVE_BOMB_FLIGHT_DOWN;
++                    }
++                }
++                return;
++            case DIVE_BOMB_FLIGHT_DOWN:
++                if (m_uiDiveBombTimer <= uiDiff)
++                {
++                    m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++                    m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++                    m_creature->SetDisplayId(MODEL_INVISIBLE);
++                    if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
++                    {
++                        m_creature->NearTeleportTo(pTarget->GetPositionX(), pTarget->GetPositionY(), pTarget->GetPositionZ(), m_creature->GetOrientation()); 
++                        DoCastSpellIfCan(pTarget, SPELL_DIVE_BOMB);
++                    }
++                    else
++                    {
++                        m_creature->NearTeleportTo(m_creature->getVictim()->GetPositionX(), m_creature->getVictim()->GetPositionY(), m_creature->getVictim()->GetPositionZ(), m_creature->GetOrientation());
++                        DoCastSpellIfCan(m_creature->getVictim(), SPELL_DIVE_BOMB);
++                    }
++                    m_creature->RemoveAurasDueToSpell(SPELL_DIVE_BOMB_VISUAL);
++                    m_uiDiveBombTimer = 2000;
++                    float fX, fY, fZ;
++                    m_creature->GetClosePoint(fX, fY, fZ, 0, urand(0, 10), urand(0, 360)); 
++                    m_creature->SummonCreature(NPC_EMBER_OF_ALAR, fX, fY, fZ, m_creature->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000)->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++                    m_creature->GetClosePoint(fX, fY, fZ, 0, urand(0, 10), urand(0, 360)); 
++                    m_creature->SummonCreature(NPC_EMBER_OF_ALAR, fX, fY, fZ, m_creature->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000)->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++                    m_DiveBomb = DIVE_BOMB_REBIRTH;
++                }
++                else
++                    m_uiDiveBombTimer -= uiDiff;
++                return;
++            case DIVE_BOMB_REBIRTH:
++                if (m_uiDiveBombTimer <= uiDiff)
++                {
++                    if (DoCastSpellIfCan(m_creature, SPELL_REBIRTH) == CAST_OK)
++                    {
++                        if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE))
++                            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++                        if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
++                            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++                        m_creature->SetDisplayId(m_uiDefaultModelID);
++                        m_uiFlameBuffetTimer = 5000;
++                        m_uiDiveBombTimer = 45000;
++                        m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim());
++                        m_DiveBomb = DIVE_BOMB_NONE;
++                    }
++                }
++                else
++                    m_uiDiveBombTimer -= uiDiff;
++                return;
++            }
++
++            // Melt Armor
++            if (m_uiMeltArmorTimer <= uiDiff)
++            {
++                if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_MELT_ARMOR) == CAST_OK)
++                    m_uiMeltArmorTimer = 60000;
++            }
++            else
++                m_uiMeltArmorTimer -= uiDiff;
++
++            // Charge
++            if (m_uiChargeTimer <= uiDiff)
++            {
++                if (Unit* pTarget = GetPlayerAtMinimumRange(20))
++                {
++                    if (DoCastSpellIfCan(pTarget, SPELL_CHARGE) == CAST_OK)
++                        m_uiChargeTimer = 35000;
++                }
++            }
++            else
++                m_uiChargeTimer -= uiDiff;
++
++            // Flame Patch
++            if (m_uiFlamePatchTimer <= uiDiff)
++            {
++                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
++                {
++                    if (Creature *pSummon = m_creature->SummonCreature(NPC_FLAME_PATCH_ALAR, pTarget->GetPositionX(), pTarget->GetPositionY(), pTarget->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN, 90000))
++                    {
++                        pSummon->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++                        pSummon->SetFloatValue(OBJECT_FIELD_SCALE_X, pSummon->GetFloatValue(OBJECT_FIELD_SCALE_X)*2.9f);
++                        pSummon->SetUInt32Value(UNIT_FIELD_DISPLAYID, MODEL_INVISIBLE);
++                        pSummon->setFaction(m_creature->getFaction());
++                        pSummon->SetLevel(m_creature->getLevel());
++                        m_luiFlamePatchGUIDs.push_back(pSummon->GetGUID());
++                        m_uiFlamePatchTimer = urand(15000, 45000);
++                    }
++                }
++            }
++            else
++                m_uiFlamePatchTimer -= uiDiff;
++
++            // Dive Bomb
++            if (m_uiDiveBombTimer <= uiDiff)
++            {
++                m_creature->GetMotionMaster()->Clear();
++                m_creature->GetMotionMaster()->MovePoint(4, m_aPlattformeLocs[4].m_fX, m_aPlattformeLocs[4].m_fY, m_aPlattformeLocs[4].m_fZ);
++                m_DiveBomb = DIVE_BOMB_FLIGHT_UP;
++            }
++            else
++                m_uiDiveBombTimer -= uiDiff;
++
++            //if melee is in range do meleeattack, otherwise cast flame buffet	
++		    if (DoAutoAttack( uiDiff ))
++                m_uiFlameBuffetTimer = 2500;
++
++            break;
++        }
++    }
++};
++
++struct MANGOS_DLL_DECL ember_of_alarAI : public ScriptedAI
++{
++    ember_of_alarAI(Creature* pCreature) : ScriptedAI(pCreature)
++    { 
++        m_uiAttackStart = 2000;
++        Reset(); 
++    }
++
++    void Reset(){ }
++    
++    uint32 m_uiAttackStart;
++
++    void DamageTaken(Unit* pKiller, uint32 &damage)
++    {
++        if (damage < m_creature->GetHealth())
++            return;
++
++        damage = 0;
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++        DoCast(m_creature, SPELL_EMBER_BLAST);
++    }
++
++    void AttackNearestTarget(Creature* pCreature)
++    {
++        float minRange = VISIBLE_RANGE;
++        float range;
++        Player* target = NULL;
++
++		Map::PlayerList const& players = m_creature->GetMap()->GetPlayers();
++        for(Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
++        {
++            if (Player* i_pl = itr->getSource())
++            {
++                if (i_pl->isTargetableForAttack())
++                {
++                    range = i_pl->GetDistance(pCreature);
++                    if (range < minRange)
++                    {
++                        minRange = range;
++                        target = i_pl;
++                    }
++                }
++            }
++        }
++
++        if (!target)
++        {
++            m_creature->ForcedDespawn();
++            return;
++        }
++        pCreature->AI()->AttackStart(target);
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++        {
++            if (m_uiAttackStart <= uiDiff)
++            {
++                AttackNearestTarget(m_creature);
++                m_uiAttackStart = 50000;
++            }
++            else if (m_uiAttackStart >= 5000)
++                m_creature->ForcedDespawn();
++            else
++                m_uiAttackStart -= uiDiff;
++            return;
++        }
++            
++
++        DoMeleeAttackIfReady();
++    }
++};
++
++struct MANGOS_DLL_DECL mob_flame_patch_alarAI : public Scripted_NoMovementAI
++{
++    mob_flame_patch_alarAI(Creature *c) : Scripted_NoMovementAI(c) {}
++
++    void Reset() {}
++
++    void Aggro (Unit *who) {}
++
++    void MoveInLineOfSight(Unit* who) {}
++
++    void UpdateAI(const uint32 diff) {}
++
++};
++
++CreatureAI* GetAI_boss_alar(Creature* pCreature)
++{
++    return new boss_alarAI(pCreature);
++}
++
++CreatureAI* GetAI_ember_of_alar(Creature* pCreature)
++{
++    return new ember_of_alarAI(pCreature);
++}
++
++CreatureAI* GetAI_mob_flame_patch_alar(Creature *_Creature)
++{
++    return new mob_flame_patch_alarAI (_Creature);
++}
++
++void AddSC_boss_alar()
++{
++    Script* pNewScript;
++
++    pNewScript = new Script;
++    pNewScript->Name = "boss_alar";
++    pNewScript->GetAI = &GetAI_boss_alar;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "ember_of_alar";
++    pNewScript->GetAI = &GetAI_ember_of_alar;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "mob_flame_patch_alar";
++    pNewScript->GetAI = &GetAI_mob_flame_patch_alar;
++    pNewScript->RegisterSelf();
++}

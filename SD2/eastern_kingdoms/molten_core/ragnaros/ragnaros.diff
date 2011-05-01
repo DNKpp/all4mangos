@@ -1,5 +1,5 @@
 diff --git a/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp b/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
-index a3a4faa..b4c5122 100644
+index a3a4faa..e2aafd4 100644
 --- a/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
 +++ b/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
 @@ -16,8 +16,8 @@
@@ -48,7 +48,7 @@ index a3a4faa..b4c5122 100644
          m_pInstance = (instance_molten_core*)pCreature->GetInstanceData();
 +        m_uiEnterCombatTimer = 0;
 +        m_bHasAggroYelled = false;
-+        m_creature->SetTargetRangeTargets(false);
++        m_creature->SetPrefereMeleeTargets();
 +        SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_MIGHT_OF_RAGNAROS);
 +		TempSpell->EffectImplicitTargetA[0] = TARGET_ALL_FRIENDLY_UNITS_AROUND_CASTER;
 +        TempSpell->EffectImplicitTargetB[0] = TARGET_ALL_FRIENDLY_UNITS_AROUND_CASTER;
@@ -142,7 +142,7 @@ index a3a4faa..b4c5122 100644
 +
 +        if (!target)
 +        {
-+            debug_log("SD2: Serpentshrine Cavern: AttackNearestTarget failed. No player.");
++            debug_log("SD2: Molten_Core: AttackNearestTarget failed. No player.");
 +            return;
 +        }
 +        pCreature->AI()->AttackStart(target);
@@ -215,7 +215,7 @@ index a3a4faa..b4c5122 100644
      }
  
      void SummonedCreatureJustDied(Creature* pSummmoned)
-@@ -151,14 +264,66 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -151,14 +264,63 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          }
      }
  
@@ -268,10 +268,7 @@ index a3a4faa..b4c5122 100644
 +                for(uint8 i = 0; i < MAX_ADDS_IN_SUBMERGE; ++i)
 +                {
 +                    if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
-+                    {
-+                        pCreature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
 +                        AttackNearestTarget(pCreature);
-+                    }
 +                }
 +                m_uiAddFightStartTimer = 3000;
 +                m_bJustSpawnedAdds = false;
@@ -282,7 +279,7 @@ index a3a4faa..b4c5122 100644
              // Timer to check when Ragnaros should emerge (is set to soonish, when last add is killed)
              if (m_uiAttackTimer < uiDiff)
              {
-@@ -176,21 +341,52 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -176,21 +338,52 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
              return;
          }
  
@@ -340,7 +337,7 @@ index a3a4faa..b4c5122 100644
          if (m_uiElementalFireTimer < uiDiff)
          {
              if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_ELEMENTAL_FIRE) == CAST_OK)
-@@ -199,6 +395,39 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -199,6 +392,39 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          else
              m_uiElementalFireTimer -= uiDiff;
  
@@ -380,7 +377,7 @@ index a3a4faa..b4c5122 100644
          // Submerge Timer
          if (m_uiSubmergeTimer < uiDiff)
          {
-@@ -219,8 +448,10 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -219,8 +445,10 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
              float fX, fY, fZ;
              for(uint8 i = 0; i < MAX_ADDS_IN_SUBMERGE; ++i)
              {
@@ -388,12 +385,12 @@ index a3a4faa..b4c5122 100644
 -                m_creature->SummonCreature(NPC_SON_OF_FLAME, fX, fY, fZ, 0.0f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 1000);
 +                m_creature->GetClosePoint(fX, fY, fZ, 0, urand(30, 50), urand(0, 360));
 +                m_uiAdds[i] = m_creature->SummonCreature(NPC_SON_OF_FLAME, fX, fY, fZ, 0.0f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000)->GetGUID();
-+                m_creature->GetMap()->GetCreature(m_uiAdds[i])->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++                m_creature->GetMap()->GetCreature(m_uiAdds[i])->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
 +                m_bJustSpawnedAdds = true;
              }
  
              return;
-@@ -228,43 +459,11 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -228,43 +456,11 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          else
              m_uiSubmergeTimer -= uiDiff;
  

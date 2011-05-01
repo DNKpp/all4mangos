@@ -1,5 +1,5 @@
 diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
-index de175eb..c5fe237 100644
+index de175eb..da81098 100644
 --- a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
 @@ -16,37 +16,136 @@
@@ -146,7 +146,7 @@ index de175eb..c5fe237 100644
 +		SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_SPOUT_EFFECT);
 +		TempSpell->EffectImplicitTargetA[0] = TARGET_NARROW_FRONTAL_CONE;
 +		TempSpell->EffectImplicitTargetA[1] = TARGET_NARROW_FRONTAL_CONE;
-+        m_creature->SetTargetRangeTargets(false);
++        m_creature->SetPrefereMeleeTargets(true);
          Reset();
      }
  
@@ -338,7 +338,7 @@ index de175eb..c5fe237 100644
 +					pCreature->MonsterMove(Add9X, Add9Y, Add9Z, 5000);
 +					break;
 +			}
-+			pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++			pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
 +		}
 +		m_uiAddsAttack_Timer = 5000;
 +	}
@@ -405,7 +405,7 @@ index de175eb..c5fe237 100644
 +				if(m_uiTimeRemain <= uiDiff)
 +				{
 +                    m_creature->AddThreat(m_creature->getVictim(), -10000000);
-+                    m_creature->SetTargetRangeTargets(false);
++                    m_creature->SetPrefereMeleeTargets(true);
 +					m_creature->RemoveAurasDueToSpell(SPELL_SPOUT);
 +					m_uiFight_Timer		= urand(10000, 15000);
 +					m_uiWhirlTimer		= 500;
@@ -434,7 +434,7 @@ index de175eb..c5fe237 100644
 +				{
 +                    m_creature->AddThreat(m_creature->getVictim(), 10000000);
 +                    m_creature->SetUInt64Value(UNIT_FIELD_TARGET, 0);
-+                    m_creature->SetTargetRangeTargets();
++                    m_creature->SetPrefereMeleeTargets(false);
 +					DoCastSpellIfCan(m_creature, SPELL_SPOUT, CAST_INTERRUPT_PREVIOUS);
 +					m_uiSpout_Timer	= 900000;			//not the real time
 +					//Sets the variabels for the rotation part
@@ -460,7 +460,7 @@ index de175eb..c5fe237 100644
                  }
                  else
                      m_uiWhirlTimer -= uiDiff;
-@@ -101,34 +457,209 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+@@ -101,34 +457,205 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
                  {
                      if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
                          if (DoCastSpellIfCan(pTarget, SPELL_GEYSER) == CAST_OK)
@@ -495,11 +495,7 @@ index de175eb..c5fe237 100644
 +						if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
 +						{
 +							if (pCreature->isAlive())
-+							{
-+								pCreature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
 +								AttackNearestTarget(pCreature);
-+							}
-+
 +						}
 +					}
 +					m_uiAddsAttack_Timer = 900000;  //not the real time
@@ -674,7 +670,7 @@ index de175eb..c5fe237 100644
                  return true;
              }
          }
-@@ -149,4 +680,14 @@ void AddSC_boss_the_lurker_below()
+@@ -149,4 +676,14 @@ void AddSC_boss_the_lurker_below()
      pNewScript->Name = "go_strange_pool";
      pNewScript->pGOUse = &GOUse_go_strange_pool;
      pNewScript->RegisterSelf();
