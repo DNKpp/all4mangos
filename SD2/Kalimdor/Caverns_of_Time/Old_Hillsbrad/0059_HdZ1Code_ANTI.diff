@@ -1,0 +1,207 @@
+diff --git a/src/game/GridNotifiers.h b/src/game/GridNotifiers.h
+index 7673828..308c135 100644
+--- a/src/game/GridNotifiers.h
++++ b/src/game/GridNotifiers.h
+@@ -653,6 +653,23 @@ namespace MaNGOS
+             float i_range;
+     };
+ 
++    class FriendlyInRangeCheck
++    {
++        public:
++            FriendlyInRangeCheck(WorldObject const* obj, float range) : i_obj(obj), i_range(range) {}
++            bool operator()(Unit* u)
++            {
++                if(u->isAlive() && u->isInCombat() && !i_obj->IsHostileTo(u) && i_obj->IsWithinDistInMap(u, i_range))
++                {
++                    return true;
++                }
++                return false;
++            }
++        private:
++            WorldObject const* i_obj;
++            float i_range;
++    };
++
+     class FriendlyMissingBuffInRangeCheck
+     {
+         public:
+diff --git a/src/game/Object.cpp b/src/game/Object.cpp
+index ceecd65..97715d2 100644
+--- a/src/game/Object.cpp
++++ b/src/game/Object.cpp
+@@ -42,6 +42,7 @@
+ #include "ObjectPosSelector.h"
+ 
+ #include "TemporarySummon.h"
++#include "TemporarySummonGO.h"
+ 
+ Object::Object( )
+ {
+@@ -1654,6 +1655,30 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
+     return pCreature;
+ }
+ 
++GameObject* WorldObject::SummonGameObject(uint32 id, float x, float y, float z, float ang1, TempSummonType spwtype, uint32 despwtime, float rotation0, float rotation1, float rotation2, float rotation3, uint32 animprogress)
++{
++    TemporarySummonGO* pObject = new TemporarySummonGO(GetObjectGuid());
++    uint32 team = 0;
++
++    if (!pObject->Create(sObjectMgr.GenerateLowGuid(HIGHGUID_UNIT), id, GetMap(), x, y, z, ang1, rotation0, rotation1, rotation2, rotation3, animprogress, GO_STATE_READY))
++    {
++        delete pObject;
++        return NULL;
++    }
++
++    if(!pObject->IsPositionValid())
++    {
++        sLog.outError("GameObject (guidlow %d, entry %d) not summoned. Suggested coordinates isn't valid (X: %f Y: %f)",pObject->GetGUIDLow(),pObject->GetEntry(),pObject->GetPositionX(),pObject->GetPositionY());
++        delete pObject;
++        return NULL;
++    }
++
++    pObject->Summon(spwtype, despwtime);
++
++    //// return the creature therewith the summoner has access to it
++    return pObject;
++}
++
+ namespace MaNGOS
+ {
+     class NearUsedPosDo
+diff --git a/src/game/Object.h b/src/game/Object.h
+index 66c3da5..f9354d0 100644
+--- a/src/game/Object.h
++++ b/src/game/Object.h
+@@ -512,6 +512,8 @@ class MANGOS_DLL_SPEC WorldObject : public Object
+ 
+         Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false);
+ 
++        GameObject* SummonGameObject(uint32 id, float x, float y, float z, float ang, TempSummonType spwtype, uint32 despwtime = 1000 , float  rotation0 = 0, float rotation1 = 0, float rotation2 = 0, float rotation3 = 0, uint32 animprogress = 100);
++
+         bool isActiveObject() const { return m_isActiveObject || m_viewPoint.hasViewers(); }
+ 
+         ViewPoint& GetViewPoint() { return m_viewPoint; }
+diff --git a/src/game/TemporarySummonGO.cpp b/src/game/TemporarySummonGO.cpp
+new file mode 100644
+index 0000000..02a1fde
+--- /dev/null
++++ b/src/game/TemporarySummonGO.cpp
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#include "TemporarySummonGO.h"
++#include "Log.h"
++
++TemporarySummonGO::TemporarySummonGO( ObjectGuid summoner ) :
++m_type(TEMPSUMMON_TIMED_DESPAWN), m_timer(0), m_lifetime(0), m_summoner(summoner)
++{
++}
++
++void TemporarySummonGO::Update( uint32 diff )
++{
++    switch(m_type)
++    {
++        case TEMPSUMMON_MANUAL_DESPAWN:
++            break;
++        case TEMPSUMMON_TIMED_DESPAWN:
++        {
++            if (m_timer <= diff)
++            {
++                UnSummon();
++                return;
++            }
++
++            m_timer -= diff;
++            break;
++        }
++        default:
++            UnSummon();
++            sLog.outError("Temporary summoned gameobject (entry: %u) have unknown type %u of ",GetEntry(),m_type);
++            break;
++    }
++
++    GameObject::Update( diff );
++}
++
++void TemporarySummonGO::Summon(TempSummonType type, uint32 lifetime)
++{
++    m_type = type;
++    m_timer = lifetime;
++    m_lifetime = lifetime;
++
++    GetMap()->Add((GameObject*)this);
++}
++
++void TemporarySummonGO::UnSummon()
++{
++    AddObjectToRemoveList();
++}
++
++void TemporarySummonGO::SaveToDB()
++{
++}
+diff --git a/src/game/TemporarySummonGO.h b/src/game/TemporarySummonGO.h
+new file mode 100644
+index 0000000..adef22e
+--- /dev/null
++++ b/src/game/TemporarySummonGO.h
+@@ -0,0 +1,42 @@
++/*
++ * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++#ifndef MANGOSSERVER_TEMPSUMMON_GO_H
++#define MANGOSSERVER_TEMPSUMMON_GO_H
++
++#include "GameObject.h"
++#include "ObjectAccessor.h"
++
++class TemporarySummonGO : public GameObject
++{
++    public:
++        explicit TemporarySummonGO(ObjectGuid summoner = ObjectGuid());
++        virtual ~TemporarySummonGO(){};
++        void Update(uint32 time);
++        void Summon(TempSummonType type, uint32 lifetime);
++        void MANGOS_DLL_SPEC UnSummon();
++        void SaveToDB();
++        ObjectGuid const& GetSummonerGuid() const { return m_summoner ; }
++        Unit* GetSummoner() const { return ObjectAccessor::GetUnit(*this, m_summoner); }
++    private:
++        TempSummonType m_type;
++        uint32 m_timer;
++        uint32 m_lifetime;
++        ObjectGuid m_summoner;
++};
++#endif

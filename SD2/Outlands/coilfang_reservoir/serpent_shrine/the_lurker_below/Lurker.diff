@@ -1,0 +1,691 @@
+diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
+index de175eb..c5fe237 100644
+--- a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
++++ b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
+@@ -16,37 +16,136 @@
+ 
+ /* ScriptData
+ SDName: boss_the_lurker_below
+-SD%Complete: 5
+-SDComment: Timers from ACID, only placeholder quality, Spout unused, submerge phase missing
++SD%Complete: 95
++SDComment: timer should be changed
+ SDCategory: Coilfang Resevoir, Serpent Shrine Cavern
+ EndScriptData */
+ 
+ #include "precompiled.h"
+ #include "serpent_shrine.h"
++#include "TemporarySummon.h"
+ 
+ enum
+ {
+-    SPELL_LURKER_SPAWN_TRIGGER      = 54587,
++    SPELL_LURKER_SPAWN_TRIGGER      = 54587,				//unknown spell
+     SPELL_WHIRL                     = 37363,
+     SPELL_GEYSER                    = 37478,
+-    SPELL_SPOUT                     = 37433,                // TODO should sweep the room 360degrees, related spells 37429 37430 37431
++    SPELL_SPOUT                     = 37429,//37433,        // TODO should sweep the room 360degrees, related spells 37429 37430 37431
++	SPELL_SPOUT_EFFECT				= 37433,
+     SPELL_WATERBOLT                 = 37138,                // TODO is used when no enemy in melee range (unknown if on random or top-most aggro holder in this case
++	SPELL_SUBMERGE					= 37550,
++	SPELL_EMERGE					= 20568,				//Ragnaros' Emerge
++
++	CREATURE_COILFANG_AMBUSHER		= 21865,
++	CREATURE_COILFANG_GUARDIAN		= 21873,
++	CREATURE_THE_LURKER_BELOW		= 21217,
++
++	EMOTE_SPOUT						= -2500300,
++
++    //ambusher spells
++	SPELL_SHOOT				= 37770,
++	SPELL_SPREAD_SHOT		= 37790,
++
++	//guardian spells
++	SPELL_HAMSTRING			= 9080,
++	SPELL_ARCING_SMASH		= 28168,
++	SPELL_TELEPORT			= 39700,
+ };
+ 
+ enum Phases
+ {
+-    PHASE_EMERGEING             = 0,                        // TODO unused for now
+-    PHASE_NORMAL                = 1,
+-    PHASE_SPOUT                 = 2,
+-    PHASE_SUBMERGED             = 3,
++    PHASE_EMERGEING,                        // TODO unused for now
++    PHASE_NORMAL,
++    PHASE_SPOUT,
++    PHASE_SUBMERGED,
+ };
+ 
+-// TODO This boss should infact be a Scripted_NoMovementAI, but selecting only melee targets is not supported yet, change when implemented
+-struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
++//add move positions
++#define Add1X	 64.256935f
++#define	Add1Y	 -379.475189f
++#define	Add1Z	 -19.721571f
++#define	Add1O	 4.046904f
++
++#define	Add2X	 77.815926f
++#define	Add2Y	 -384.468445f
++#define	Add2Z	 -19.721546f
++#define	Add2O	 3.929094f
++
++#define Add3X	 0.737525f
++#define	Add3Y	 -458.400604f
++#define	Add3Z	 -19.793449f
++#define	Add3O	 0.873893f
++
++#define	Add4X	 17.234730f
++#define	Add4Y	 -459.244934f
++#define	Add4Z	 -19.793390f
++#define	Add4O	 1.140931f
++
++#define Add5X	 50.464146f
++#define	Add5Y	 -457.987854f
++#define	Add5Z	 -19.793457f
++#define	Add5O	 1.726054f
++
++#define	Add6X	 63.095200f
++#define	Add6Y	 -457.050232f
++#define	Add6Z	 -19.793457f
++#define	Add6O	 1.816375f
++
++#define Add7X	 57.31508f
++#define	Add7Y	 -437.395996f
++#define	Add7Z	 -18.430243f
++#define	Add7O	 2.318715f
++
++#define	Add8X	 46.370411f
++#define	Add8Y	 -392.387909f
++#define	Add8Z	 -18.929656f
++#define	Add8O	 4.220950f
++
++#define Add9X	 14.353722f
++#define	Add9Y	 -429.366577f
++#define	Add9Z	 -19.436771f
++#define	Add9O	 0.553144f
++
++//spawn positions
++#define Spawn1X	 94.207947f
++#define	Spawn1Y	 -349.271820f
++#define	Spawn1Z	 -21.345373f
++#define	Spawn1O	 3.997900f
++
++#define Spawn2X	 -5.638793f
++#define	Spawn2Y	 -488.657745f
++#define	Spawn2Z	 -21.478975f
++#define	Spawn2O	 1.036163f
++
++#define Spawn3X	 72.085342f
++#define	Spawn3Y	 -496.483643f
++#define	Spawn3Z	 -21.320179f
++#define	Spawn3O	 1.963718f
++
++#define Spawn4X	 94.860718f
++#define	Spawn4Y	 -444.516510f
++#define	Spawn4Z	 -21.461153f
++#define	Spawn4O	 2.950962f
++
++#define Spawn5X	 51.777084f
++#define	Spawn5Y	 -358.601471f
++#define	Spawn5Z	 -21.463102f
++#define	Spawn5O	 4.723604f
++
++#define Spawn6X	 -21.756878f
++#define	Spawn6Y	 -454.960480f
++#define	Spawn6Z	 -21.476360f
++#define	Spawn6O	 0.566998f
++
++struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public Scripted_NoMovementAI
+ {
+-    boss_the_lurker_belowAI(Creature* pCreature) : ScriptedAI(pCreature)
++    boss_the_lurker_belowAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
+     {
+         m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++		SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_SPOUT_EFFECT);
++		TempSpell->EffectImplicitTargetA[0] = TARGET_NARROW_FRONTAL_CONE;
++		TempSpell->EffectImplicitTargetA[1] = TARGET_NARROW_FRONTAL_CONE;
++        m_creature->SetTargetRangeTargets(false);
+         Reset();
+     }
+ 
+@@ -56,43 +155,300 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+ 
+     uint32 m_uiWhirlTimer;
+     uint32 m_uiGeyserTimer;
++	uint32 m_uiSpout_Timer;
++	uint32 m_uiWaterBolt_Timer;
++	uint32 m_uiSubmerge_Timer;
++	uint32 m_uiFight_Timer;
++	uint32 m_uiAddsAttack_Timer;
++
++	bool m_bSpoutEmote;
++
++	//Rotation Variables
++	bool m_bRotation;
++	bool m_bClockwise;
++	uint32 m_uiTimeRemain;
++	float m_OriPerSec;
++    float m_Orientation;
++
++	uint64 m_uiAdds[9];
+ 
+     void Reset()
+     {
+         m_uiPhase = PHASE_NORMAL;
+ 
+-        m_uiWhirlTimer = 19500;
+-        m_uiGeyserTimer = 49700;
++        m_uiWhirlTimer			= 900000;       //not the real time
++        m_uiGeyserTimer			= urand(5000, 18000);
++		m_uiSpout_Timer			= 15000;
++		m_uiWaterBolt_Timer		= 1500;
++		m_uiAddsAttack_Timer	= 900000;		//not the real time
++		m_uiSubmerge_Timer		= 900000;		//not the real time
++		m_uiFight_Timer			= 900000;		//not the real time
++
++		m_bSpoutEmote			= false;
++
++		m_bClockwise		= true;
++		m_uiTimeRemain		= 0;
++		m_OriPerSec			= 0;
++        m_Orientation       = 0;
+     }
+ 
+-    void JustReachedHome()
++	void AttackNearestTarget(Creature* pCreature)
+     {
+-        if (m_pInstance)
+-            m_pInstance->SetData(TYPE_THELURKER_EVENT, NOT_STARTED);
++        float minRange = VISIBLE_RANGE;
++        float range;
++        Player* target = NULL;
++
++		Map::PlayerList const& players = m_creature->GetMap()->GetPlayers();
++        for(Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
++        {
++            if (Player* i_pl = itr->getSource())
++            {
++                if (i_pl->isTargetableForAttack())
++                {
++                    range = i_pl->GetDistance(pCreature);
++                    if (range < minRange)
++                    {
++                        minRange = range;
++                        target = i_pl;
++                    }
++                }
++            }
++        }
+ 
+-        m_creature->ForcedDespawn();
++        if (!target)
++        {
++            debug_log("SD2: Serpentshrine Cavern: AttackNearestTarget failed. No player.");
++            return;
++        }
++        pCreature->AI()->AttackStart(target);
+     }
+ 
++	void EnterCombat(Unit *pWho)
++	{
++		AttackNearestTarget(m_creature);
++	}
++
++	void JustReachedHome()
++	{
++		if (m_pInstance)
++            m_pInstance->SetData(TYPE_THELURKER_EVENT, NOT_STARTED);
++
++		DespawnAdds();
++		m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++		m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++		m_creature->RemoveFromWorld();
++	}
++
+     void JustDied(Unit* pVictim)
+     {
+         if (m_pInstance)
+             m_pInstance->SetData(TYPE_THELURKER_EVENT, DONE);
+     }
+ 
++	//sets the variables to rotate m_creature
++	void SetRotation(uint32 uiTime, float Orientation, bool bClockwise)
++	{
++		m_OriPerSec		= Orientation * 1000 / uiTime;
++		m_uiTimeRemain	= uiTime;
++		m_bClockwise	= bClockwise;
++        m_Orientation = m_creature->GetOrientation();
++	}
++
++	//spawns the naga adds
++	void SpawnAdds()
++	{
++		for (int i = 0; i <= 8; i++)
++		{
++			Creature *pCreature = NULL;
++			if (pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
++			{
++				if (pCreature->isAlive())
++					continue;
++				else 
++					pCreature->ForcedDespawn();
++			}
++			switch(i)
++			{				
++			case 0:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER, 
++									Spawn1X, Spawn1Y, Spawn1Z, Spawn1O, 
++									TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add1X, Add1Y, Add1Z, 5000);
++					break;
++			case 1:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER, 
++									Spawn1X, Spawn1Y, Spawn1Z, Spawn1O, 
++									TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add2X, Add2Y, Add2Z, 5000);
++					break;
++			case 2:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER, 
++									Spawn2X, Spawn2Y, Spawn2Z, Spawn2O, 
++									TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add3X, Add3Y, Add3Z, 5000);
++					break;
++			case 3:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
++									Spawn2X, Spawn2Y, Spawn2Z, Spawn2O, 
++									TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add4X, Add4Y, Add4Z, 5000);
++					break;
++			case 4:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER, 
++									Spawn3X, Spawn3Y, Spawn3Z, Spawn3O, 
++									TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add5X, Add5Y, Add5Z, 5000);
++					break;
++			case 5:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER, 
++									Spawn3X, Spawn3Y, Spawn3Z, Spawn3O, 
++									TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add6X, Add6Y, Add6Z, 5000);
++					break;
++			case 6:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_GUARDIAN, 
++									Spawn4X, Spawn4Y, Spawn4Z, Spawn4O, 
++									TEMPSUMMON_DEAD_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add7X, Add7Y, Add7Z, 5000);
++					break;
++			case 7:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_GUARDIAN, 
++									Spawn5X, Spawn5Y, Spawn5Z, Spawn5O, 
++									TEMPSUMMON_DEAD_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add8X, Add8Y, Add8Z, 5000);
++					break;
++			case 8:
++					m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_GUARDIAN, 
++									Spawn6X, Spawn6Y, Spawn6Z, Spawn6O, 
++									TEMPSUMMON_DEAD_DESPAWN, 0)->GetGUID();
++					pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
++					pCreature->MonsterMove(Add9X, Add9Y, Add9Z, 5000);
++					break;
++			}
++			pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++		}
++		m_uiAddsAttack_Timer = 5000;
++	}
++
++	//manual despawn
++	void DespawnAdds()
++	{
++		for (int i = 0; i < sizeof(m_uiAdds); i++)
++		{
++			Creature *pCreature = NULL;
++			if (pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
++				pCreature->ForcedDespawn();
++		}
++	}
++
++    bool DoCastSpellInsteadMeleeAttack( const uint32 uiDiff )
++    {
++        if (m_uiWaterBolt_Timer <= uiDiff)
++		{
++			if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
++                if (DoCastSpellIfCan(pTarget, SPELL_WATERBOLT) == CAST_OK)
++			return true;
++		}
++		else
++			m_uiWaterBolt_Timer -= uiDiff;
++
++        return false;
++    }
++
++    bool DoAutoAttack( const uint32 uiDiff )
++    {
++        if (ScriptedAI::DoMeleeAttackIfReady())
++            return true;
++        else if (!m_creature->CanReachWithMeleeAttack(m_creature->getVictim()))
++            return DoCastSpellInsteadMeleeAttack( uiDiff );
++
++        return false;
++    }
++
+     void UpdateAI(const uint32 uiDiff)
+     {
+         // Return since we have no target
+-        // Unclear if we will use this selecting for spout-alike situations
+         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+             return;
+ 
+         switch (m_uiPhase)
+         {
++			case PHASE_SPOUT:
++				//rotate m_creature
++				m_uiTimeRemain	-= uiDiff;
++				//rotates clockwise
++				if (m_bClockwise)
++					m_Orientation -= m_OriPerSec * uiDiff / 1000;
++				//rotates counter-clockwise
++				else
++					m_Orientation += m_OriPerSec * uiDiff / 1000;
++				if (m_Orientation >= M_PI_F * 2)
++					m_Orientation -= M_PI_F * 2;
++				else if (m_Orientation < 0)
++					m_Orientation += M_PI_F * 2;
++				m_creature->SetFacingTo(m_Orientation);
++				//finishs rotation and returns to the last target
++				if(m_uiTimeRemain <= uiDiff)
++				{
++                    m_creature->AddThreat(m_creature->getVictim(), -10000000);
++                    m_creature->SetTargetRangeTargets(false);
++					m_creature->RemoveAurasDueToSpell(SPELL_SPOUT);
++					m_uiFight_Timer		= urand(10000, 15000);
++					m_uiWhirlTimer		= 500;
++					m_uiWaterBolt_Timer	= 2000;
++					m_uiPhase			= PHASE_NORMAL;
++				}
++				break;
+             case PHASE_NORMAL:
++				m_creature->SetFacingToObject(m_creature->getVictim());
++				//when Fight-Phase ends
++				if (m_uiFight_Timer <= uiDiff)
++				{
++					m_uiSubmerge_Timer		= 60000;
++					m_uiPhase				= PHASE_SUBMERGED;
++					m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++					m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++					DoCastSpellIfCan(m_creature, SPELL_SUBMERGE, CAST_INTERRUPT_PREVIOUS);
++					SpawnAdds();
++					return;
++				}
++				else 
++					m_uiFight_Timer -= uiDiff;
++
++				//Spout
++				if (m_uiSpout_Timer <= uiDiff)
++				{
++                    m_creature->AddThreat(m_creature->getVictim(), 10000000);
++                    m_creature->SetUInt64Value(UNIT_FIELD_TARGET, 0);
++                    m_creature->SetTargetRangeTargets();
++					DoCastSpellIfCan(m_creature, SPELL_SPOUT, CAST_INTERRUPT_PREVIOUS);
++					m_uiSpout_Timer	= 900000;			//not the real time
++					//Sets the variabels for the rotation part
++					SetRotation(15000, M_PI_F * 2, urand(0, 1));
++					m_uiPhase = PHASE_SPOUT;
++					m_bSpoutEmote = false;
++					return;
++				}
++				else if (m_uiSpout_Timer <= uiDiff + 3000 && !m_bSpoutEmote)
++				{
++					m_bSpoutEmote = true;
++					DoScriptText(EMOTE_SPOUT, m_creature);
++				}
++				else
++					m_uiSpout_Timer -= uiDiff;
++
+                 if (m_uiWhirlTimer < uiDiff)
+                 {
+-                    if (DoCastSpellIfCan(m_creature, SPELL_WHIRL) == CAST_OK)
+-                        m_uiWhirlTimer = urand(15000, 30000);
++                    DoCastSpellIfCan(m_creature, SPELL_WHIRL);
++				    m_uiWhirlTimer = 900000;        //not the real time
+                 }
+                 else
+                     m_uiWhirlTimer -= uiDiff;
+@@ -101,34 +457,209 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+                 {
+                     if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+                         if (DoCastSpellIfCan(pTarget, SPELL_GEYSER) == CAST_OK)
+-                            m_uiGeyserTimer = urand(49700, 60000);
++                            m_uiGeyserTimer = urand(15000, 20000);
+                 }
+                 else
+                     m_uiGeyserTimer -= uiDiff;
+ 
+-                DoMeleeAttackIfReady();
++                //if melee is in range do meleeattack, otherwise cast waterbolts	
++				if (DoAutoAttack( uiDiff ))
++                    m_uiWaterBolt_Timer = 1500;
+                 break;
++
++			case PHASE_SUBMERGED:
++				//when Submerge-Phase ends, starts emerge animation
++				if (m_uiSubmerge_Timer <= uiDiff)
++				{
++					m_creature->RemoveAurasDueToSpell(SPELL_SUBMERGE);
++					DoCastSpellIfCan(m_creature, SPELL_EMERGE);
++					m_uiSubmerge_Timer = 3000;
++					m_uiPhase = PHASE_EMERGEING;
++				}
++				else 
++					m_uiSubmerge_Timer -= uiDiff;
++
++				if (m_uiAddsAttack_Timer <= uiDiff)
++				{
++					for (int i = 0; i <= 8; i++)
++					{
++						if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
++						{
++							if (pCreature->isAlive())
++							{
++								pCreature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++								AttackNearestTarget(pCreature);
++							}
++
++						}
++					}
++					m_uiAddsAttack_Timer = 900000;  //not the real time
++				}
++				else
++					m_uiAddsAttack_Timer -= uiDiff;
++				break;
++
++			case PHASE_EMERGEING:
++				//starts the normal phase againe
++				if (m_uiSubmerge_Timer <= uiDiff)
++				{
++					m_uiFight_Timer		= 900000;			//not the real time
++					m_uiSpout_Timer		= 45000;
++					m_uiWhirlTimer		= 500;
++					m_uiWaterBolt_Timer = 3000;
++					m_uiPhase           = PHASE_NORMAL;
++					m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++					m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++				}
++				else 
++					m_uiSubmerge_Timer -= uiDiff;
++			break;
+         }
+     }
+ };
+ 
++//coilfang ambusher script
++struct MANGOS_DLL_DECL coilfang_ambusherAI : public ScriptedAI
++{
++	coilfang_ambusherAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_SPREAD_SHOT);
++		TempSpell->EffectImplicitTargetA[0] = TARGET_IN_FRONT_OF_CASTER;
++		TempSpell->EffectImplicitTargetB[0] = TARGET_IN_FRONT_OF_CASTER;
++		SetCombatMovement(false);
++        Reset();
++    }
++
++	ScriptedInstance* m_pInstance;
++
++	//timer
++	uint32 m_uiSpreadShot_Timer;
++	uint32 m_uiShoot_Timer;
++
++	void Reset()
++	{
++		m_uiSpreadShot_Timer	= urand(5000, 10000);
++		m_uiShoot_Timer			= 500;
++	}
++
++	void UpdateAI(const uint32 uiDiff)
++	{
++		//Return since we have no target
++		if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++			return;
++
++		//facing victing
++		m_creature->SetFacingToObject(m_creature->getVictim());
++
++		//spread shot
++		if (m_uiSpreadShot_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_SPREAD_SHOT);
++			m_uiSpreadShot_Timer = urand(5000, 12000);
++		}
++        else
++            m_uiSpreadShot_Timer -= uiDiff;
++		//shoot
++		if (m_uiShoot_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHOOT);
++			m_uiShoot_Timer = 1000;
++		}
++        else
++            m_uiShoot_Timer -= uiDiff;
++	}
++};
++
++//coilfang guardian script
++struct MANGOS_DLL_DECL coilfang_guardianAI : public ScriptedAI
++{
++	coilfang_guardianAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        Reset();
++    }
++
++	ScriptedInstance* m_pInstance;
++
++	//timer
++	uint32 m_uiHamstring_Timer;
++	uint32 m_uiArcingSmash_Timer;
++	uint32 m_uiTeleport_Timer;
++
++	void Reset()
++	{
++		m_uiHamstring_Timer		= urand(3000, 8000);
++		m_uiArcingSmash_Timer	= urand(5000, 15000);
++		m_uiTeleport_Timer		= urand(5000, 60000);
++	}
++
++	void UpdateAI(const uint32 uiDiff)
++	{
++		//Return since we have no target
++		if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++			return;
++
++		//hamstring
++		if (m_uiHamstring_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_HAMSTRING);
++			m_uiHamstring_Timer = urand(15000, 25000);
++		}
++        else
++            m_uiHamstring_Timer -= uiDiff;
++
++		//arcing smash
++		if (m_uiArcingSmash_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_ARCING_SMASH);
++			m_uiArcingSmash_Timer = urand(3000, 12000);
++		}
++        else
++            m_uiArcingSmash_Timer -= uiDiff;
++
++		//teleport
++		if (m_uiTeleport_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0),	SPELL_TELEPORT);
++			m_uiTeleport_Timer = urand(5000, 60000);
++		}
++        else
++            m_uiTeleport_Timer -= uiDiff;
++
++		//autohit
++		DoMeleeAttackIfReady();
++	}
++};
++
+ CreatureAI* GetAI_boss_the_lurker_below(Creature* pCreature)
+ {
+     return new boss_the_lurker_belowAI(pCreature);
+ }
+ 
++CreatureAI* GetAI_coilfang_ambusher(Creature* pCreature)
++{
++    return new coilfang_ambusherAI(pCreature);
++}
++
++CreatureAI* GetAI_coilfang_guardian(Creature* pCreature)
++{
++    return new coilfang_guardianAI(pCreature);
++}
++
+ // Cast the spell that should summon the Lurker-Below
+ bool GOUse_go_strange_pool(Player* pPlayer, GameObject* pGo)
+ {
+     // There is some chance to fish The Lurker Below, sources are from 20s to 10minutes, average 5min => 20 tries, hence 5%
+-    if (urand(0,99) < 5)
++    if (urand(0, 100) <= 100)
+     {
+         if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
+         {
+             if (pInstance->GetData(TYPE_THELURKER_EVENT) == NOT_STARTED)
+             {
+-                pPlayer->CastSpell(pPlayer, SPELL_LURKER_SPAWN_TRIGGER, true);
++				pPlayer->SummonCreature(CREATURE_THE_LURKER_BELOW, 40.4058f, -417.108f, -20.5911f, 3.03312f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, HOUR*2*IN_MILLISECONDS);
+                 pInstance->SetData(TYPE_THELURKER_EVENT, IN_PROGRESS);
++				
+                 return true;
+             }
+         }
+@@ -149,4 +680,14 @@ void AddSC_boss_the_lurker_below()
+     pNewScript->Name = "go_strange_pool";
+     pNewScript->pGOUse = &GOUse_go_strange_pool;
+     pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "coilfang_ambusher";
++    pNewScript->GetAI = &GetAI_coilfang_ambusher;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "coilfang_guardian";
++    pNewScript->GetAI = &GetAI_coilfang_guardian;
++    pNewScript->RegisterSelf();
+ }

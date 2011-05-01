@@ -1,0 +1,1 @@
+UPDATE  `creature_template` SET  `ScriptName` =  'npc_coilfang_frenzy', `InhabitType` =  '3' WHERE  `creature_template`.`entry` =21508;

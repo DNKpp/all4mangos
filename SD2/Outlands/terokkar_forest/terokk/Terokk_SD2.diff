@@ -1,0 +1,395 @@
+Index: scripts/outland/terokkar_forest.cpp
+===================================================================
+--- scripts/outland/terokkar_forest.cpp	(revision 1958)
++++ scripts/outland/terokkar_forest.cpp	(working copy)
+@@ -36,6 +36,7 @@
+ npc_slim
+ go_veil_skith_cage
+ npc_captive_child
++boss_terokk
+ EndContentData */
+ 
+ #include "precompiled.h"
+@@ -969,6 +970,361 @@
+     return new npc_captive_child(pCreature);
+ }
+ 
++/*######
++## boss_terokk
++######*/
++
++enum
++
++{
++    SPELL_SHADOWBOLT_VOLLEY         = 40721,
++    SPELL_CLEAVE                    = 15284,
++    SPELL_DIVINE_SHIELD             = 40733,
++    SPELL_ENRAGE                    = 28747,
++    SPELL_WILL_OF_THE_ARAKKOA_GOD   = 40722,
++    SPELL_CHOSEN_ONE                = 40726,
++    SPELL_INTRO_VISUAL              = 39990,
++    SPELL_INTRO_VISUAL2             = 39833,
++
++    NPC_TEROKK                      = 21838,
++    NPC_FIRE                        = 23277,
++    NPC_SKYGUARD_ACE                = 23377,
++    MODEL_NOMODEL                   = 11686,
++
++    SPELL_SKYGUARD_FIRE             = 40656,
++    SPELL_SUMMON_FIRE               = 45039,
++    SPELL_SKYGUARD_BOMB             = 40657,
++
++    POINT_ID_CENTER                 = 1,
++    POINT_ID_CENTER2                = 2,
++    POINT_ID_RETURN                 = 3,
++    POINT_ID_DESPAWN                = 4
++};
++
++#define EMOTE_INTRO				-2500350
++#define EMOTE_CHOSEN_ONE		-2500351
++#define EMOTE_SHIELD			-2500352
++
++const float afFirePos[1][3] = 
++{
++    {-3773.6f, 3523.65f, 287.117f}
++};
++
++const float afGuardPos[2][3] = 
++{
++    {-3866.861f, 3523.792f, 308.618f},
++    {-3747.19f, 3525.55f, 320.663f}
++};
++
++const float ATTACK_RADIUS           = 26.0f;
++
++struct MANGOS_DLL_DECL mob_skyguardAI : public ScriptedAI
++{
++    mob_skyguardAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        Reset();
++        SetCombatMovement(false);
++    }
++
++    uint64 m_uiFireGUID;
++    uint32 m_uiPointId;
++    bool isBombing;
++
++    void Reset()
++    {
++        m_uiFireGUID = 0;
++        m_uiPointId = 0;
++        isBombing = false;
++    }
++
++    void JustSummoned(Creature* pSummoned)
++    {
++        if (pSummoned->GetEntry() == NPC_FIRE)
++        {
++            pSummoned->SetDisplayId(MODEL_NOMODEL);
++            m_uiFireGUID = pSummoned->GetGUID();
++            pSummoned->CastSpell(pSummoned, SPELL_SKYGUARD_FIRE, false);
++            pSummoned->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++            pSummoned->GetMap()->CreatureRelocation(pSummoned, pSummoned->GetPositionX(), pSummoned->GetPositionY(), afFirePos[0][2], 0);
++            pSummoned->ForcedDespawn(35000);
++        }
++    }
++
++    void MovementInform(uint32 uiType, uint32 uiPointId)
++    {
++        if (uiType != POINT_MOTION_TYPE)
++            return;
++        m_uiPointId = uiPointId;
++    }
++    
++    void UpdateAI(const uint32 uiDiff)
++    {
++        if (!m_uiPointId)
++            return;
++
++        switch(m_uiPointId)
++        {
++            case POINT_ID_CENTER:
++                if (isBombing)
++                    m_creature->CastSpell(m_creature, SPELL_SUMMON_FIRE, false);
++                m_creature->GetMotionMaster()->MovePoint(POINT_ID_RETURN, afGuardPos[0][0], afGuardPos[0][1], afGuardPos[0][2]);
++                break;
++            case POINT_ID_CENTER2:
++                if (isBombing)
++                {
++					if (Creature* pFire = m_creature->GetMap()->GetCreature(m_uiFireGUID))
++                    {
++                        m_creature->CastSpell(pFire, SPELL_SKYGUARD_BOMB, true);
++                    }
++                }
++                m_creature->GetMotionMaster()->MovePoint(POINT_ID_DESPAWN, afGuardPos[1][0], afGuardPos[1][1], afGuardPos[1][2]);
++                break;
++            case POINT_ID_RETURN:
++                m_creature->GetMotionMaster()->MovePoint(POINT_ID_CENTER2, afFirePos[0][0]-urand(0, 32), afFirePos[0][1]+urand(0, 32), afFirePos[0][2]+urand(10,20));
++                break;
++            case POINT_ID_DESPAWN:
++                m_creature->SetVisibility(VISIBILITY_OFF);
++                m_creature->ForcedDespawn(5000);
++                break;
++        }
++        m_uiPointId = 0;
++    }
++};
++
++CreatureAI* GetAI_mob_skyguard(Creature* pCreature)
++{
++    return new mob_skyguardAI(pCreature);
++}
++
++struct MANGOS_DLL_DECL boss_terokkAI : public ScriptedAI
++{
++    boss_terokkAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++		m_uiIntroStep = 0;
++        Reset();
++    }
++
++    uint32 m_uiShadowboltVolley_Timer;
++    uint32 m_uiCleave_Timer;
++    bool   m_bHasShield;
++    uint32 m_uiShield_Timer;
++    uint32 m_uiCheck_Timer;
++    uint32 m_uiChosenOne_Timer;
++    bool   m_bChosenOnePrepared;
++    uint32 m_uiFire_Timer;
++	uint32 m_uiIntroStep;
++    uint32 m_uiIntro_Timer;
++    bool m_BubbleEmoteDone;
++
++    void Reset()
++    {
++        m_uiShadowboltVolley_Timer  = 4000+rand()%3000;
++        m_uiCleave_Timer            = 6000+rand()%3000;
++        m_bHasShield                = false;
++        m_uiShield_Timer            = 0;
++        m_uiCheck_Timer             = 100;
++        m_uiChosenOne_Timer         = 30000;
++        m_bChosenOnePrepared        = false;
++        m_uiFire_Timer              = 10000;
++        m_uiIntro_Timer             = 1000;
++        m_BubbleEmoteDone           = false;
++    }
++
++    void SpellHitTarget (Unit* pUnit, const SpellEntry* pSpellEntry)
++    {
++        if (pSpellEntry->Id == SPELL_CHOSEN_ONE)
++        {
++            if (pUnit->HasAura(SPELL_WILL_OF_THE_ARAKKOA_GOD))
++                pUnit->RemoveAurasDueToSpell(SPELL_WILL_OF_THE_ARAKKOA_GOD);
++        }
++    }
++
++    void JustSummoned(Creature* pSummoned)
++    {
++        if (pSummoned->GetEntry() == NPC_SKYGUARD_ACE)
++        {
++            pSummoned->SetLevel(m_creature->getLevel());
++            pSummoned->SetSplineFlags(SPLINEFLAG_FLYING);
++            pSummoned->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++            pSummoned->GetMotionMaster()->MovePoint(POINT_ID_CENTER, afFirePos[0][0]+urand(0, 32), afFirePos[0][1]-urand(0, 32), afFirePos[0][2]+urand(20,35));
++        }
++    }
++
++    void MoveInLineOfSight(Unit* pWho)
++    {
++        if (m_uiIntroStep == 3)
++        {
++            if (!m_creature->getVictim() && pWho->isTargetableForAttack() && (m_creature->IsHostileTo(pWho)) && pWho->isInAccessablePlaceFor(m_creature) )
++            {
++				if (!m_creature->CanFly() && m_creature->GetDistanceZ(pWho) > ATTACK_RADIUS)
++                    return;
++                if (m_creature->IsWithinDistInMap(pWho, ATTACK_RADIUS) && m_creature->IsWithinLOSInMap(pWho) )
++                {
++                    m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++                    pWho->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
++                    AttackStart(pWho);
++                }
++            }
++        }
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++		if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++		{
++			if (m_uiIntro_Timer < uiDiff)
++			{
++				switch(m_uiIntroStep)
++				{
++					case 0:
++						m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++						m_creature->CastSpell(m_creature, SPELL_INTRO_VISUAL, false);
++						m_creature->CastSpell(m_creature, SPELL_INTRO_VISUAL2, true);
++						m_uiIntro_Timer = 4000;
++						m_uiIntroStep++;
++						break;
++					case 1:
++						m_creature->MonsterSay(EMOTE_INTRO, 0);
++						m_uiIntro_Timer = 8000;
++						m_uiIntroStep++;
++						break;
++					case 2:
++						m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++						m_uiIntroStep++;
++						m_uiIntro_Timer = 60000;
++						break;
++					case 3:
++						m_creature->ForcedDespawn(1000);
++							break;
++				}
++			}
++			else
++				m_uiIntro_Timer -= uiDiff;
++
++			return;
++		}
++
++        if (m_uiShadowboltVolley_Timer < uiDiff)
++        {
++            DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHADOWBOLT_VOLLEY);
++
++            m_uiShadowboltVolley_Timer = 10000+rand()%5000;
++        }
++        else
++            m_uiShadowboltVolley_Timer -= uiDiff;
++
++        if (m_uiCleave_Timer < uiDiff)
++        {
++            DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE);
++
++            m_uiCleave_Timer = 6000+rand()%3000;
++        }
++        else
++            m_uiCleave_Timer -= uiDiff;
++
++        if (m_uiChosenOne_Timer < uiDiff)
++        {
++            if (m_bChosenOnePrepared)
++            {
++                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
++                {
++                    if (DoCastSpellIfCan(pTarget, SPELL_CHOSEN_ONE) == CAST_OK)
++                    {
++						m_creature->MonsterYell(EMOTE_CHOSEN_ONE, 0, pTarget);
++                        m_bChosenOnePrepared = false;
++                        m_uiChosenOne_Timer = 30000;
++                    }
++                }
++            }
++            else
++            {
++                if (DoCastSpellIfCan(m_creature, SPELL_WILL_OF_THE_ARAKKOA_GOD) == CAST_OK)
++                {
++                    m_bChosenOnePrepared = true;
++                }
++            }
++        }
++        else
++            m_uiChosenOne_Timer -= uiDiff;
++
++        if (m_creature->GetHealthPercent() <= 30.0f)
++        {
++            if (m_uiCheck_Timer < uiDiff)
++            {
++                if (!m_creature->HasAura(SPELL_SKYGUARD_BOMB) && !m_creature->HasAura(SPELL_DIVINE_SHIELD))
++                {
++                    DoCastSpellIfCan(m_creature, SPELL_DIVINE_SHIELD, CAST_INTERRUPT_PREVIOUS);
++                    m_bHasShield = true;
++                    if (!m_BubbleEmoteDone)
++                    {
++                        m_creature->MonsterYell(EMOTE_SHIELD, 0);
++                        m_BubbleEmoteDone = true;
++                    }
++                    m_uiCheck_Timer = 100;
++                }
++                else if (m_creature->HasAura(SPELL_SKYGUARD_BOMB) && m_creature->HasAura(SPELL_DIVINE_SHIELD))
++                {
++                    m_creature->RemoveAurasDueToSpell(SPELL_DIVINE_SHIELD);
++                    if (!m_creature->HasAura(SPELL_ENRAGE))
++                        m_creature->CastSpell(m_creature, SPELL_ENRAGE, true);
++                    m_bHasShield = false;
++                }
++            }
++            else
++                m_uiCheck_Timer -= uiDiff;
++
++
++            if (m_uiFire_Timer < uiDiff)
++            {
++                m_creature->SummonCreature(NPC_SKYGUARD_ACE, afGuardPos[1][0], afGuardPos[1][1], afGuardPos[1][2], 0, TEMPSUMMON_TIMED_DESPAWN, 60000);
++                m_creature->SummonCreature(NPC_SKYGUARD_ACE, afGuardPos[1][0], afGuardPos[1][1]+10, afGuardPos[1][2], 0, TEMPSUMMON_TIMED_DESPAWN, 60000);
++                if (Creature* pGuard = m_creature->SummonCreature(NPC_SKYGUARD_ACE, afGuardPos[1][0], afGuardPos[1][1]-10, afGuardPos[1][2], 0, TEMPSUMMON_TIMED_DESPAWN, 60000))
++                {
++                    if (pGuard->AI())
++                        ((mob_skyguardAI*)pGuard->AI())->isBombing = 1;
++                }
++                m_uiFire_Timer = 30000;
++            }
++            else
++                m_uiFire_Timer -= uiDiff;
++        }
++        DoMeleeAttackIfReady();
++    }
++};
++
++CreatureAI* GetAI_boss_terokk(Creature* pCreature)
++{
++    return new boss_terokkAI(pCreature);
++}
++
++enum
++{
++	ITEM_TIME_LOST_OFFERING	= 32720,
++
++	SPELL_SUMMON_TEROKK		= 41004,
++};
++
++bool GOGossipHello_go_ancient_skull_pile(Player* pPlayer, GameObject *pGO)
++{
++	if (pPlayer->HasItemCount(ITEM_TIME_LOST_OFFERING, 1))
++	{
++		pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, "Die Opfergabe niederlegen.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
++	}
++	pPlayer->SEND_GOSSIP_MENU(pPlayer->GetGossipTextId(pGO), pGO->GetGUID());
++    return true;
++}
++
++bool GOGossipSelect_go_ancient_skull_pile(Player* pPlayer, GameObject* pGO, uint32 uiSender, uint32 uiAction)
++{
++	if (uiAction == GOSSIP_ACTION_INFO_DEF+1 && pPlayer->HasItemCount(ITEM_TIME_LOST_OFFERING, 1))
++	{
++		pPlayer->CastSpell(pPlayer, SPELL_SUMMON_TEROKK, true);
++		pPlayer->DestroyItemCount(ITEM_TIME_LOST_OFFERING, 1, true);
++		pPlayer->CLOSE_GOSSIP_MENU();
++	}
++    return true;
++}
++
+ void AddSC_terokkar_forest()
+ {
+     Script *newscript;
+@@ -1048,4 +1404,20 @@
+     newscript->Name = "npc_captive_child";
+     newscript->GetAI = &GetAI_npc_captive_child;
+     newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "boss_terokk";
++    newscript->GetAI = &GetAI_boss_terokk;
++    newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "mob_skyguard";
++    newscript->GetAI = &GetAI_mob_skyguard;
++    newscript->RegisterSelf();
++
++	newscript = new Script;
++	newscript->Name = "go_ancient_skull_pile";
++	newscript->pGossipHelloGO = &GOGossipHello_go_ancient_skull_pile;
++	newscript->pGossipSelectGO = &GOGossipSelect_go_ancient_skull_pile;
++	newscript->RegisterSelf();
+ }

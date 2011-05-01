@@ -1,0 +1,2455 @@
+Index: base/escort_ai.cpp
+===================================================================
+--- base/escort_ai.cpp	(revision 1920)
++++ base/escort_ai.cpp	(working copy)
+@@ -28,7 +28,8 @@
+     m_bIsRunning(false),
+     m_pQuestForEscort(NULL),
+     m_bCanInstantRespawn(false),
+-    m_bCanReturnToStart(false)
++    m_bCanReturnToStart(false),
++    m_bCheckRange(true)
+ {}
+ 
+ bool npc_escortAI::IsVisible(Unit* pWho) const
+@@ -294,7 +295,7 @@
+     }
+ 
+     //Check if player or any member of his group is within range
+-    if (HasEscortState(STATE_ESCORT_ESCORTING) && m_uiPlayerGUID && !m_creature->getVictim() && !HasEscortState(STATE_ESCORT_RETURNING))
++    if (HasEscortState(STATE_ESCORT_ESCORTING) && m_uiPlayerGUID && !m_creature->getVictim() && !HasEscortState(STATE_ESCORT_RETURNING) && m_bCheckRange)
+     {
+         if (m_uiPlayerCheckTimer < uiDiff)
+         {
+Index: base/escort_ai.h
+===================================================================
+--- base/escort_ai.h	(revision 1920)
++++ base/escort_ai.h	(working copy)
+@@ -70,6 +70,8 @@
+ 
+         void Start(bool bRun = false, uint64 uiPlayerGUID = 0, const Quest* pQuest = NULL, bool bInstantRespawn = false, bool bCanLoopPath = false);
+ 
++        void SetCheckRange(bool bCheckRange = true) { m_bCheckRange = bCheckRange; }
++
+         void SetRun(bool bRun = true);
+         void SetEscortPaused(bool uPaused);
+ 
+@@ -101,6 +103,7 @@
+         std::list<Escort_Waypoint>::iterator CurrentWP;
+ 
+         bool m_bIsRunning;                                  //all creatures are walking by default (has flag SPLINEFLAG_WALKMODE)
++        bool m_bCheckRange;                                 //true if the range to the group should be check
+         bool m_bCanInstantRespawn;                          //if creature should respawn instantly after escort over (if not, database respawntime are used)
+         bool m_bCanReturnToStart;                           //if creature can walk same path (loop) without despawn. Not for regular escort quests.
+ };
+Index: include/sc_creature.cpp
+===================================================================
+--- include/sc_creature.cpp	(revision 1920)
++++ include/sc_creature.cpp	(working copy)
+@@ -424,6 +424,18 @@
+     return pUnit;
+ }
+ 
++std::list<Creature*> ScriptedAI::DoFindFriendly(float fRange)
++{
++    std::list<Creature*> pList;
++
++    MaNGOS::FriendlyInRangeCheck u_check(m_creature, fRange);
++    MaNGOS::CreatureListSearcher<MaNGOS::FriendlyInRangeCheck> searcher(pList, u_check);
++
++    Cell::VisitGridObjects(m_creature, searcher, fRange);
++
++    return pList;
++}
++
+ std::list<Creature*> ScriptedAI::DoFindFriendlyCC(float fRange)
+ {
+     std::list<Creature*> pList;
+Index: include/sc_creature.h
+===================================================================
+--- include/sc_creature.h	(revision 1920)
++++ include/sc_creature.h	(working copy)
+@@ -147,6 +147,9 @@
+     //Returns a list of friendly CC'd units within range
+     std::list<Creature*> DoFindFriendlyCC(float fRange);
+ 
++    //Returns a list of friendly units within range
++    std::list<Creature*> DoFindFriendly(float fRange);
++
+     //Returns a list of all friendly units missing a specific buff within range
+     std::list<Creature*> DoFindFriendlyMissingBuff(float fRange, uint32 uiSpellId);
+ 
+Index: include/sc_grid_searchers.h
+===================================================================
+--- include/sc_grid_searchers.h	(revision 1920)
++++ include/sc_grid_searchers.h	(working copy)
+@@ -7,6 +7,7 @@
+ 
+ #include "Unit.h"
+ #include "GameObject.h"
++#include "TemporarySummonGO.h"
+ 
+ #include "Cell.h"
+ #include "CellImpl.h"
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_captain_skarloc.cpp
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_captain_skarloc.cpp	(revision 1920)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_captain_skarloc.cpp	(working copy)
+@@ -17,37 +17,61 @@
+ /* ScriptData
+ SDName: Boss_Captain_Skarloc
+ SD%Complete: 75
+-SDComment: Missing adds, missing waypoints to move up to Thrall once spawned + speech before enter combat.
++SDComment:  missing waypoints to move up to Thrall once spawned + speech before enter combat.
+ SDCategory: Caverns of Time, Old Hillsbrad Foothills
+ EndScriptData */
+ 
+ #include "precompiled.h"
+ #include "old_hillsbrad.h"
+ 
+-#define SAY_ENTER                   -1560000
+-#define SAY_TAUNT1                  -1560001
+-#define SAY_TAUNT2                  -1560002
+-#define SAY_SLAY1                   -1560003
+-#define SAY_SLAY2                   -1560004
+-#define SAY_DEATH                   -1560005
++enum
++{
++    SAY_ENTER                   = -1560000,
++    SAY_TAUNT1                  = -1560001,
++    SAY_TAUNT2                  = -1560002,
++    SAY_SLAY1                   = -1560003,
++    SAY_SLAY2                   = -1560004,
++    SAY_DEATH                   = -1560005,
+ 
+-#define SPELL_HOLY_LIGHT            29427
+-#define SPELL_CLEANSE               29380
+-#define SPELL_HAMMER_OF_JUSTICE     13005
+-#define SPELL_HOLY_SHIELD           31904
+-#define SPELL_DEVOTION_AURA         8258
+-#define SPELL_CONSECRATION          38385
++    //captain skarloc spells
++    SPELL_HOLY_LIGHT            = 29427,
++    SPELL_CLEANSE               = 29380,
++    SPELL_HAMMER_OF_JUSTICE     = 13005,
++    SPELL_HOLY_SHIELD           = 31904,
++    SPELL_DEVOTION_AURA         = 8258,
++    SPELL_CONSECRATION          = 38385,
+ 
++    //durnhold warden spells
++    SPELL_SHADOW_WORD_NH        = 15654,
++    SPELL_SHADOW_WORD_HC        = 34941,
++    SPELL_HEAL_NH               = 15586,
++    SPELL_HEAL_HC               = 22883,
++    SPELL_PSYCHIC_SCREAM        = 22884,
++    SPELL_DISPEL_MAGIC_HC       = 17201,
++
++
++    //durnhold veteran spells
++    SPELL_BACKSTAB              = 15582,
++    SPELL_SINISTER_STRIKE       = 15581,
++
++    NPC_DURNHOLD_WARDEN         = 17833,
++    NPC_DURNHOLD_VETERAN        = 17860
++};
++
+ struct MANGOS_DLL_DECL boss_captain_skarlocAI : public ScriptedAI
+ {
+     boss_captain_skarlocAI(Creature* pCreature) : ScriptedAI(pCreature)
+     {
+         m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
+         Reset();
+     }
+ 
+     ScriptedInstance* m_pInstance;
+ 
++    bool m_bIsRegularMode;
++
++    //timer
+     uint32 Holy_Light_Timer;
+     uint32 Cleanse_Timer;
+     uint32 HammerOfJustice_Timer;
+@@ -55,26 +79,33 @@
+     uint32 DevotionAura_Timer;
+     uint32 Consecration_Timer;
+ 
++    //GUIDs
++    uint64 m_uiWarden;
++    uint64 m_uiVeteran;
++
+     void Reset()
+     {
+-        Holy_Light_Timer = 30000;
+-        Cleanse_Timer = 10000;
+-        HammerOfJustice_Timer = 60000;
+-        HolyShield_Timer = 240000;
+-        DevotionAura_Timer = 3000;
+-        Consecration_Timer = 8000;
++        Holy_Light_Timer        = 30000;
++        Cleanse_Timer           = 10000;
++        HammerOfJustice_Timer   = 60000;
++        HolyShield_Timer        = 240000;
++        DevotionAura_Timer      = 3000;
++        Consecration_Timer      = 8000;
++
++        SpawnAdds();
+     }
+ 
+     void Aggro(Unit *who)
+     {
+         //This is not correct. Should taunt Thrall before engage in combat
+-        DoScriptText(SAY_TAUNT1, m_creature);
+-        DoScriptText(SAY_TAUNT2, m_creature);
++        DoScriptText(urand(0, 1) ? SAY_TAUNT1 : SAY_TAUNT2, m_creature);
++        m_creature->CallForHelp (5.0f);
+     }
+ 
+     void KilledUnit(Unit *victim)
+     {
+         DoScriptText(urand(0, 1) ? SAY_SLAY1 : SAY_SLAY2, m_creature);
++        m_pInstance->SetData(TYPE_THRALL_PART1, DONE);
+     }
+ 
+     void JustDied(Unit *victim)
+@@ -85,63 +116,244 @@
+             m_pInstance->SetData(TYPE_THRALL_PART1, DONE);
+     }
+ 
+-    void UpdateAI(const uint32 diff)
++    //checks if the adds are dead (respawn) or despawnd (spawns them new)
++    void SpawnAdds()
+     {
++        Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiWarden);
++        if (!pCreature)
++            m_creature->SummonCreature(NPC_DURNHOLD_WARDEN, 
++                m_creature->GetPositionX(), m_creature->GetPositionY(), 
++                m_creature->GetPositionZ(), m_creature->GetOrientation(),
++                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++        else if (pCreature->isDead())
++            pCreature->Respawn();
++        pCreature = m_creature->GetMap()->GetCreature(m_uiVeteran);
++        if (!pCreature)
++            m_creature->SummonCreature(NPC_DURNHOLD_VETERAN,  
++                m_creature->GetPositionX(), m_creature->GetPositionY(), 
++                m_creature->GetPositionZ(), m_creature->GetOrientation(), 
++                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++        else if (pCreature->isDead())
++            pCreature->Respawn();      
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
+         //Return since we have no target
+         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+             return;
+ 
+         //Holy_Light
+-        if (Holy_Light_Timer < diff)
++        if (Holy_Light_Timer <= uiDiff)
+         {
+-            DoCastSpellIfCan(m_creature, SPELL_HOLY_LIGHT);
+-            Holy_Light_Timer = urand(20000, 30000);
+-        }else Holy_Light_Timer -= diff;
++            if (Unit *pCreature = DoSelectLowestHpFriendly(40.0f))
++            {
++                if (pCreature->GetHealthPercent() <= 75)
++                {
++                    DoCastSpellIfCan(pCreature, SPELL_HOLY_LIGHT);
++                    if (m_bIsRegularMode)
++                        Holy_Light_Timer = urand(20000, 30000);
++                    else
++                        Holy_Light_Timer = urand(10000, 25000);
++                }
++            }
++        }else Holy_Light_Timer -= uiDiff;
+ 
+         //Cleanse
+-        if (Cleanse_Timer  < diff)
++        if (Cleanse_Timer  <= uiDiff)
+         {
+-            DoCastSpellIfCan(m_creature, SPELL_CLEANSE);
+-            Cleanse_Timer = 10000;
+-        } else Cleanse_Timer -= diff;
++            std::list<Creature*> lCCUnits = DoFindFriendlyCC(30.0f);
++            if (!lCCUnits.empty())
++            {
++                DoCastSpellIfCan((*lCCUnits.begin()), SPELL_CLEANSE);
++                Cleanse_Timer = 10000;
++            }
++        } else Cleanse_Timer -= uiDiff;
+ 
+         //Hammer of Justice
+-        if (HammerOfJustice_Timer < diff)
++        if (HammerOfJustice_Timer <= uiDiff)
+         {
+             DoCastSpellIfCan(m_creature->getVictim(), SPELL_HAMMER_OF_JUSTICE);
+-            HammerOfJustice_Timer = urand(20000, 35000);
+-        }else HammerOfJustice_Timer -= diff;
++            if (m_bIsRegularMode)
++                HammerOfJustice_Timer = urand(15000, 30000);
++            else
++                HammerOfJustice_Timer = urand(8000, 20000);
++        }else HammerOfJustice_Timer -= uiDiff;
+ 
+         //Holy Shield
+-        if (HolyShield_Timer < diff)
++        if (HolyShield_Timer <= uiDiff)
+         {
+             DoCastSpellIfCan(m_creature, SPELL_HOLY_SHIELD);
+-            HolyShield_Timer = 240000;
+-        }else HolyShield_Timer -= diff;
++            HolyShield_Timer = urand(20000, 35000);
++        }else HolyShield_Timer -= uiDiff;
+ 
+         //Devotion_Aura
+-        if (DevotionAura_Timer < diff)
++        if (DevotionAura_Timer <= uiDiff)
+         {
+             DoCastSpellIfCan(m_creature, SPELL_DEVOTION_AURA);
+-            DevotionAura_Timer = urand(45000, 55000);
+-        }else DevotionAura_Timer -= diff;
++            DevotionAura_Timer = 240000;
++        }else DevotionAura_Timer -= uiDiff;
+ 
+         //Consecration
+-        if (Consecration_Timer < diff)
++        if (!m_bIsRegularMode)
+         {
+-            //DoCastSpellIfCan(m_creature->getVictim(), SPELL_CONSECRATION);
+-            Consecration_Timer = urand(5000, 10000);
+-        }else Consecration_Timer -= diff;
++            if (Consecration_Timer <= uiDiff)
++            {
++                DoCastSpellIfCan(m_creature->getVictim(), SPELL_CONSECRATION);
++                Consecration_Timer = urand(20000, 30000);
++            }else Consecration_Timer -= uiDiff;
++        }
+ 
+         DoMeleeAttackIfReady();
+     }
+ };
+ 
++//durnhold warden
++struct MANGOS_DLL_DECL add_durnhold_wardenAI : public ScriptedAI
++{
++    add_durnhold_wardenAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
++        Reset();
++    }
++    
++    ScriptedInstance *m_pInstance;
++
++    bool m_bIsRegularMode;
++
++    //timer
++    uint32 m_uiShadowWord_Timer;
++    uint32 m_uiPsychicScream_Timer;
++    uint32 m_uiHeal_Timer;
++    uint32 m_uiDispelMagic_Timer;
++
++    void Reset()
++    {
++        m_uiShadowWord_Timer    = urand(4000, 12000);
++        m_uiPsychicScream_Timer = urand(9000, 21000);
++        m_uiHeal_Timer          = urand(8000, 16000);
++        m_uiDispelMagic_Timer   = urand(6000, 15000);
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        //Return since we have no target
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++        //Spell ShadowWord
++        if (m_uiShadowWord_Timer <= uiDiff)
++        {
++            DoCastSpellIfCan(m_creature->getVictim(),
++                m_bIsRegularMode ? SPELL_SHADOW_WORD_NH : SPELL_SHADOW_WORD_HC);
++            m_uiShadowWord_Timer = urand(8000, 20000);
++        }
++        else m_uiShadowWord_Timer -= uiDiff;
++
++        //Spell Psychic Scream
++        if (m_uiPsychicScream_Timer <= uiDiff)
++        {
++            DoCastSpellIfCan(m_creature->getVictim(), SPELL_PSYCHIC_SCREAM);
++            m_uiPsychicScream_Timer = urand(15000, 20000);
++        }
++        else m_uiPsychicScream_Timer -= uiDiff;
++
++        //Spell Heal
++        if (m_uiHeal_Timer <= uiDiff)
++        {
++            if (Unit *pCreature = DoSelectLowestHpFriendly(40.0f))
++            {
++                if (pCreature->GetHealthPercent() <= 75)
++                {
++                    DoCastSpellIfCan(pCreature, m_bIsRegularMode ? SPELL_HEAL_NH : SPELL_HEAL_HC);
++                    m_uiHeal_Timer = urand(12000, 22000);
++                }
++            }
++        }
++        else m_uiHeal_Timer -= uiDiff;
++
++        //Spell Dispel Magic
++        if (m_uiDispelMagic_Timer <= uiDiff && !m_bIsRegularMode)
++        {
++            std::list<Creature*> lFriendlyUnits = DoFindFriendly(30.0f);
++            if (!lFriendlyUnits.empty())
++            {
++                DoCastSpellIfCan((*lFriendlyUnits.begin()), SPELL_DISPEL_MAGIC_HC);
++                m_uiDispelMagic_Timer = urand(8000, 22000);
++            }
++        }
++        else m_uiDispelMagic_Timer -= uiDiff;
++
++        DoMeleeAttackIfReady();
++    }
++};
++
++//durnhold veteran
++struct MANGOS_DLL_DECL add_durnhold_veteranAI : public ScriptedAI
++{
++    add_durnhold_veteranAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
++        Reset();
++    }
++
++    ScriptedInstance *m_pInstance;
++
++    bool m_bIsRegularMode;
++
++    //timer
++    uint32 m_uiBackstab_Timer;
++    uint32 m_uiSinisterStrike_Timer;
++
++    void Reset()
++    {
++        m_uiBackstab_Timer          = urand(3000, 8000);
++        m_uiSinisterStrike_Timer    = urand(6000, 12000);
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        //Return since we have no target
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++        if (m_uiBackstab_Timer <= uiDiff)
++        {
++            DoCastSpellIfCan(m_creature->getVictim(), SPELL_BACKSTAB);
++            m_uiBackstab_Timer = urand(3000, 8000);
++        }
++        else 
++            m_uiBackstab_Timer -= uiDiff;
++
++        if (m_uiSinisterStrike_Timer <= uiDiff)
++        {
++            DoCastSpellIfCan(m_creature->getVictim(), SPELL_SINISTER_STRIKE);
++            m_uiSinisterStrike_Timer = urand(6000, 12000);
++        }
++        else
++            m_uiSinisterStrike_Timer -= uiDiff;
++
++        DoMeleeAttackIfReady();
++    }
++};
++
+ CreatureAI* GetAI_boss_captain_skarloc(Creature* pCreature)
+ {
+     return new boss_captain_skarlocAI(pCreature);
+ }
+ 
++CreatureAI* GetAI_add_durnhold_warden(Creature* pCreature)
++{
++    return new add_durnhold_wardenAI(pCreature);
++}
++
++CreatureAI* GetAI_add_durnhold_veteran(Creature* pCreature)
++{
++    return new add_durnhold_veteranAI(pCreature);
++}
++
+ void AddSC_boss_captain_skarloc()
+ {
+     Script *newscript;
+@@ -149,4 +361,14 @@
+     newscript->Name = "boss_captain_skarloc";
+     newscript->GetAI = &GetAI_boss_captain_skarloc;
+     newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "add_durnhold_warden";
++    newscript->GetAI = &GetAI_add_durnhold_warden;
++    newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "add_durnhold_veteran";
++    newscript->GetAI = &GetAI_add_durnhold_veteran;
++    newscript->RegisterSelf();
+ }
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_epoch_hunter.cpp
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_epoch_hunter.cpp	(revision 1920)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_epoch_hunter.cpp	(working copy)
+@@ -16,51 +16,119 @@
+ 
+ /* ScriptData
+ SDName: Boss_Epoch_Hunter
+-SD%Complete: 60
+-SDComment: Missing spawns pre-event, missing speech to be coordinated with rest of escort event.
++SD%Complete: 100
++SDComment: should be done
+ SDCategory: Caverns of Time, Old Hillsbrad Foothills
+ EndScriptData */
+ 
+ #include "precompiled.h"
+ #include "old_hillsbrad.h"
+ 
+-#define SAY_ENTER1                  -1560013
+-#define SAY_ENTER2                  -1560014
+-#define SAY_ENTER3                  -1560015
+-#define SAY_AGGRO1                  -1560016
+-#define SAY_AGGRO2                  -1560017
+-#define SAY_SLAY1                   -1560018
+-#define SAY_SLAY2                   -1560019
+-#define SAY_BREATH1                 -1560020
+-#define SAY_BREATH2                 -1560021
+-#define SAY_DEATH                   -1560022
++enum
++{
++    SAY_ENTER1          = -1560013,
++    SAY_ENTER2          = -1560014,
++    SAY_ENTER3          = -1560015,
++    SAY_AGGRO1          = -1560016,
++    SAY_AGGRO2          = -1560017,
++    SAY_SLAY1           = -1560018,
++    SAY_SLAY2           = -1560019,
++    SAY_BREATH1         = -1560020,
++    SAY_BREATH2         = -1560021,
++    SAY_DEATH           = -1560022,
+ 
+-#define SPELL_SAND_BREATH           31914
+-#define SPELL_IMPENDING_DEATH       31916
+-#define SPELL_MAGIC_DISRUPTION_AURA 33834
+-#define SPELL_WING_BUFFET           31475
++    SPELL_SAND_BREATH           = 31914,
++    SPELL_IMPENDING_DEATH       = 31916,
++    SPELL_MAGIC_DISRUPTION_AURA = 33834,
++    SPELL_WING_BUFFET           = 31475,
+ 
++    NPC_INFINITE_SABOTEUR       = 18172,    //Melee
++    NPC_INFINITE_DEFILER        = 18171,    //Caster
++    NPC_INFINITE_SLAYER         = 18170    //Melee
++};
++
++enum PHASES
++{
++    PHASE_NONE,
++    PHASE_EVENT_START,
++    PHASE_1_ADDS,
++    PHASE_2_ADDS,
++    PHASE_3_ADDS,
++    PHASE_FIGHT
++};
++
++//adds spawn position
++#define WEST1X   2636.696289f      //right spawn
++#define WEST1Y    694.946777f
++#define WEST1Z     56.006065f
++#define WEST1O      3.927587f
++#define WEST2X   2636.053467f     //left spawn
++#define WEST2Y    710.645508f
++#define WEST2Z     56.061470f
++#define WEST2O      4.921458f
++#define WEST3X   2640.887939f      //middle spawn
++#define WEST3Y    702.639343f
++#define WEST3Z     56.006065f
++#define WEST3O      4.481637f
++#define WEST4X   2640.887939f      //fourth Add in Wave 3
++#define WEST4Y    710.645508f
++#define WEST4Z     56.006065f
++#define WEST4O      4.921458f
++
++#define SOUTH1X  2594.706299f      //right spawn
++#define SOUTH1Y   681.217529f
++#define SOUTH1Z    55.912205f
++#define SOUTH1O     6.121546f
++#define SOUTH2X  2592.134521f      //left spawn
++#define SOUTH2Y   671.713745f
++#define SOUTH2Z    56.306274f
++#define SOUTH2O     6.266843f
++#define SOUTH3X  2601.371582f      //middle spawn
++#define SOUTH3Y   676.864319f
++#define SOUTH3Z    56.430420f
++#define SOUTH3O     6.121546f
++
+ struct MANGOS_DLL_DECL boss_epoch_hunterAI : public ScriptedAI
+ {
+     boss_epoch_hunterAI(Creature* pCreature) : ScriptedAI(pCreature)
+     {
+         m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
+         Reset();
+     }
+ 
+     ScriptedInstance* m_pInstance;
+ 
+-    uint32 SandBreath_Timer;
+-    uint32 ImpendingDeath_Timer;
+-    uint32 WingBuffet_Timer;
+-    uint32 Mda_Timer;
++    //timers
++    uint32 m_uiSandBreath_Timer;
++    uint32 m_uiImpendingDeath_Timer;
++    uint32 m_uiWingBuffet_Timer;
++    uint32 m_uiMda_Timer;
++    uint32 m_uiPhaseChange_Timer;
+ 
++    //combat start
++    bool m_bCombatStart;
++    uint32 m_uiCombatStart_Timer;
++
++    bool m_bIsRegularMode;
++
++    //names the phases
++    PHASES m_Phase;
++
++    //stores the guid´s of the summoned adds
++    std::list<uint64> m_uiAddsList;
++
+     void Reset()
+     {
+-        SandBreath_Timer = urand(8000, 16000);
+-        ImpendingDeath_Timer = urand(25000, 30000);
+-        WingBuffet_Timer = 35000;
+-        Mda_Timer = 40000;
++        m_uiSandBreath_Timer        = urand(8000, 16000);
++        m_uiImpendingDeath_Timer    = urand(25000, 30000);
++        m_uiWingBuffet_Timer        = 35000;
++        m_uiMda_Timer               = 40000;
++        m_uiPhaseChange_Timer       = 9000000;             //get real time from the thrall script
++        m_Phase                     = PHASE_NONE;
++        m_uiCombatStart_Timer       = 0;
++        m_bCombatStart              = false;
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+     }
+ 
+     void Aggro(Unit *who)
+@@ -81,45 +149,177 @@
+             m_pInstance->SetData(TYPE_THRALL_PART4, DONE);
+     }
+ 
+-    void UpdateAI(const uint32 diff)
++    //return true if they are dead; false if at least one is alive
++    bool AddsAreDead()
+     {
+-        //Return since we have no target
+-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++        std::list<uint64>::iterator i = m_uiAddsList.begin();
++        for (; i != m_uiAddsList.end(); ++i)
++        { 
++            //when pCreature is alive return false;
++            if (Creature *pCreature = m_creature->GetMap()->GetCreature((*i)))
++                if (pCreature->isAlive())
++                    return false;
++        }
++        //if no creature is alive, cleare AddsList and return true;
++        m_uiAddsList.clear();
++        return true;
++    }
++
++    //switchs the phases
++    void SwitchPhase()
++    {
++        switch(m_Phase)
++        {
++        case PHASE_EVENT_START:
++            m_Phase = PHASE_1_ADDS;
++            break;
++        case PHASE_1_ADDS:
++            m_Phase = PHASE_2_ADDS;
++            break;
++        case PHASE_2_ADDS:
++            m_Phase = PHASE_3_ADDS;
++            break;
++        case PHASE_3_ADDS:
++            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++            if (m_pInstance)
++            {
++                if (Creature *pThrall = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_THRALL)))
++                    m_creature->AddThreat(pThrall);
++            }
++            m_Phase = PHASE_FIGHT;
++            break;
++        }
++    }
++
++    void SetPhaseTimer(uint32 uiPhase_Timer)
++    {
++        m_uiPhaseChange_Timer = uiPhase_Timer;
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        if (!m_pInstance)
+             return;
++        
++        //start the fight
++        if (m_uiCombatStart_Timer <= uiDiff && m_bCombatStart)
++        {
++            for (std::list<uint64>::iterator i = m_uiAddsList.begin(); i != m_uiAddsList.end(); ++i)
++            {
++                if (Creature *pCreature = m_creature->GetMap()->GetCreature((*i)))
++                    if (pCreature->isAlive())
++                        //Add threat for thrall
++                        pCreature->AddThreat(pCreature->GetMap()->
++                                    GetCreature(m_pInstance->GetData64(NPC_THRALL)));     
++            }
++            m_bCombatStart = false;
++        }
++        else if (m_bCombatStart) 
++            m_uiCombatStart_Timer -= uiDiff;
+ 
+-        //Sand Breath
+-        if (SandBreath_Timer < diff)
++        //figth starts in x secs
++        if (m_Phase == PHASE_NONE)
+         {
+-            if (m_creature->IsNonMeleeSpellCasted(false))
+-                m_creature->InterruptNonMeleeSpells(false);
++            if (m_pInstance->GetData(TYPE_THRALL_PART4) == IN_PROGRESS)
++            {
++                m_Phase = PHASE_EVENT_START;
++                m_uiPhaseChange_Timer = 40000;
++            }
++        }
++        //epoch hunter fights
++        else if (m_Phase == PHASE_FIGHT)
++        {
++            //Return since we have no target
++            if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++                return;
+ 
+-            DoCastSpellIfCan(m_creature->getVictim(),SPELL_SAND_BREATH);
++            //Spell Sand Breath
++            if (m_uiSandBreath_Timer <= uiDiff)
++            {
++                if (m_creature->IsNonMeleeSpellCasted(false))
++                    m_creature->InterruptNonMeleeSpells(false);
+ 
+-            DoScriptText(urand(0, 1) ? SAY_BREATH1 : SAY_BREATH2, m_creature);
++                DoCastSpellIfCan(m_creature->getVictim(),SPELL_SAND_BREATH);
+ 
+-            SandBreath_Timer = urand(10000, 20000);
+-        }else SandBreath_Timer -= diff;
++                DoScriptText(urand(0, 1) ? SAY_BREATH1 : SAY_BREATH2, m_creature);
+ 
+-        if (ImpendingDeath_Timer < diff)
+-        {
+-            DoCastSpellIfCan(m_creature->getVictim(),SPELL_IMPENDING_DEATH);
+-            ImpendingDeath_Timer = urand(25000, 30000);
+-        }else ImpendingDeath_Timer -= diff;
++                m_uiSandBreath_Timer = urand(10000, 20000);
++            }else m_uiSandBreath_Timer -= uiDiff;
+ 
+-        if (WingBuffet_Timer < diff)
+-        {
+-            if (Unit *target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM,0))
+-                DoCastSpellIfCan(target,SPELL_WING_BUFFET);
+-            WingBuffet_Timer = urand(25000, 35000);
+-        }else WingBuffet_Timer -= diff;
++            //Spell Impending Death
++            if (m_uiImpendingDeath_Timer <= uiDiff)
++            {
++                DoCastSpellIfCan(m_creature->getVictim(),SPELL_IMPENDING_DEATH);
++                m_uiImpendingDeath_Timer = urand(25000, 30000);
++            }else m_uiImpendingDeath_Timer -= uiDiff;
+ 
+-        if (Mda_Timer < diff)
++            //Spell Wing Buffet
++            if (m_uiWingBuffet_Timer <= uiDiff)
++            {
++                if (Unit *target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM,0))
++                    DoCastSpellIfCan(target,SPELL_WING_BUFFET);
++                m_uiWingBuffet_Timer = urand(25000, 35000);
++            }else m_uiWingBuffet_Timer -= uiDiff;
++            
++            //Spell Magic Disruption Aura
++            if (m_uiMda_Timer <= uiDiff)
++            {
++                DoCastSpellIfCan(m_creature, SPELL_MAGIC_DISRUPTION_AURA);
++                m_uiMda_Timer = 15000;
++            }else m_uiMda_Timer -= uiDiff;
++
++            DoMeleeAttackIfReady();
++        }
++        //if not in fight phase, check the adds
++        else if (AddsAreDead())
+         {
+-            DoCastSpellIfCan(m_creature,SPELL_MAGIC_DISRUPTION_AURA);
+-            Mda_Timer = 15000;
+-        }else Mda_Timer -= diff;
++            //spawns adds and set aggro to Thrall
++            if (m_uiPhaseChange_Timer <= uiDiff)
++            {
++                SwitchPhase();
++                m_uiCombatStart_Timer = 5000;
++                m_bCombatStart = true;
++                switch(m_Phase)
++                {
++                    //west wave (under epoch hunter)
++                case PHASE_3_ADDS:
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_DEFILER,
++                                                WEST4X, WEST4Y, WEST4Z, WEST4O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                case PHASE_1_ADDS:
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_SABOTEUR,
++                                                WEST1X, WEST1Y, WEST1Z, WEST1O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_DEFILER,
++                                                WEST2X, WEST2Y, WEST2Z, WEST2O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_SLAYER,
++                                                WEST3X, WEST3Y, WEST3Z, WEST3O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                    break;
+ 
+-        DoMeleeAttackIfReady();
++                    //south wave
++                case PHASE_2_ADDS:
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_SABOTEUR,
++                                                SOUTH1X, SOUTH1Y, SOUTH1Z, SOUTH1O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_DEFILER,
++                                                SOUTH2X, SOUTH2Y, SOUTH2Z, SOUTH2O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                    m_uiAddsList.push_back(m_creature->SummonCreature(NPC_INFINITE_SLAYER,
++                                                SOUTH3X, SOUTH3Y, SOUTH3Z, SOUTH3O, 
++                                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000)->GetGUID());
++                    break;
++                }
++                //if it is the last adds phase, give more time between the next phase
++                if (m_Phase == PHASE_3_ADDS)
++                    m_uiPhaseChange_Timer = 10000;
++                else
++                    m_uiPhaseChange_Timer = 2000;
++            }
++            else m_uiPhaseChange_Timer -= uiDiff;
++        } 
+     }
+ };
+ 
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_leutenant_drake.cpp
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_leutenant_drake.cpp	(revision 1920)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/boss_leutenant_drake.cpp	(working copy)
+@@ -16,8 +16,8 @@
+ 
+ /* ScriptData
+ SDName: Boss_Luetenant_Drake
+-SD%Complete: 70
+-SDComment: Missing proper code for patrolling area after being spawned. Script for GO (barrels) quest 10283
++SD%Complete: 100
++SDComment: should be done
+ SDCategory: Caverns of Time, Old Hillsbrad Foothills
+ EndScriptData */
+ 
+@@ -29,14 +29,19 @@
+ ## go_barrel_old_hillsbrad
+ ######*/
+ 
+-bool GOUse_go_barrel_old_hillsbrad(Player* pPlayer, GameObject* pGo)
++bool GOHello_go_barrel_old_hillsbrad(Player* pPlayer, GameObject* pGo)
+ {
+     if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
+     {
+         if (pInstance->GetData(TYPE_BARREL_DIVERSION) == DONE)
+             return false;
+ 
++        if (pGo->GetGoType() == GAMEOBJECT_TYPE_DOOR)
++            return false;
++
+         pInstance->SetData(TYPE_BARREL_DIVERSION, IN_PROGRESS);
++        pGo->SetGoType(GAMEOBJECT_TYPE_DOOR);
++        pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
+     }
+     return false;
+ }
+@@ -57,59 +62,33 @@
+ #define SPELL_HAMSTRING         9080
+ #define SPELL_MORTAL_STRIKE     31911
+ #define SPELL_FRIGHTENING_SHOUT 33789
++#define SPELL_EXPLODING_SHOT    33792
+ 
+-struct Location
+-{
+-    uint32 wpId;
+-    float x;
+-    float y;
+-    float z;
+-};
+ 
+-static Location DrakeWP[]=
++struct MANGOS_DLL_DECL boss_lieutenant_drakeAI : public npc_escortAI
+ {
+-    {0, 2125.84f, 88.2535f, 54.8830f},
+-    {1, 2111.01f, 93.8022f, 52.6356f},
+-    {2, 2106.70f, 114.753f, 53.1965f},
+-    {3, 2107.76f, 138.746f, 52.5109f},
+-    {4, 2114.83f, 160.142f, 52.4738f},
+-    {5, 2125.24f, 178.909f, 52.7283f},
+-    {6, 2151.02f, 208.901f, 53.1551f},
+-    {7, 2177.00f, 233.069f, 52.4409f},
+-    {8, 2190.71f, 227.831f, 53.2742f},
+-    {9, 2178.14f, 214.219f, 53.0779f},
+-    {10, 2154.99f, 202.795f, 52.6446f},
+-    {11, 2132.00f, 191.834f, 52.5709f},
+-    {12, 2117.59f, 166.708f, 52.7686f},
+-    {13, 2093.61f, 139.441f, 52.7616f},
+-    {14, 2086.29f, 104.950f, 52.9246f},
+-    {15, 2094.23f, 81.2788f, 52.6946f},
+-    {16, 2108.70f, 85.3075f, 53.3294f},
+-    {17, 2125.50f, 88.9481f, 54.7953f},
+-    {18, 2128.20f, 70.9763f, 64.4221f}
+-};
++    boss_lieutenant_drakeAI(Creature* pCreature) : npc_escortAI(pCreature) 
++    {
++        m_pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData();
++        Reset();
++        Start(true, m_creature->GetGUID());
++        SetCheckRange(false);
++        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++    }
+ 
+-struct MANGOS_DLL_DECL boss_lieutenant_drakeAI : public ScriptedAI
+-{
+-    boss_lieutenant_drakeAI(Creature* pCreature) : ScriptedAI(pCreature) {Reset();}
++    instance_old_hillsbrad* m_pInstance;
+ 
+-    bool CanPatrol;
+-    uint32 wpId;
++    uint32 m_uiWhirlwind_Timer;
++    uint32 m_uiFear_Timer;
++    uint32 m_uiMortalStrike_Timer;
++    uint32 m_uiExplodingShot_Timer;
+ 
+-    uint32 Whirlwind_Timer;
+-    uint32 Fear_Timer;
+-    uint32 MortalStrike_Timer;
+-    uint32 ExplodingShout_Timer;
+-
+     void Reset()
+     {
+-        CanPatrol = true;
+-        wpId = 0;
+-
+-        Whirlwind_Timer = 20000;
+-        Fear_Timer = 30000;
+-        MortalStrike_Timer = 45000;
+-        ExplodingShout_Timer = 25000;
++        m_uiWhirlwind_Timer = 20000;
++        m_uiFear_Timer = 30000;
++        m_uiMortalStrike_Timer = urand(4000, 10000);
++        m_uiExplodingShot_Timer = urand(6000, 25000);
+     }
+ 
+     void Aggro(Unit *who)
+@@ -125,15 +104,43 @@
+     void JustDied(Unit *victim)
+     {
+         DoScriptText(SAY_DEATH, m_creature);
++        m_pInstance->SetData(TYPE_BARREL_DIVERSION, DONE);
+     }
+ 
+-    void UpdateAI(const uint32 diff)
++    void WaypointReached(uint32 uiPointID)
+     {
+-        //TODO: make this work
+-        if (CanPatrol && wpId == 0)
++        switch(uiPointID)
+         {
+-            m_creature->GetMotionMaster()->MovePoint(DrakeWP[0].wpId, DrakeWP[0].x, DrakeWP[0].y, DrakeWP[0].z);
+-            ++wpId;
++        case 6:
++            if (m_pInstance)
++                m_pInstance->SetFlameSpawnState(true, m_creature);
++            break;
++        case 7: 
++            SetRun(false);
++            DoScriptText(SAY_ENTER, m_creature);
++            break;
++        case 9:
++            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++            break;
++        case 15:
++            SetEscortPaused(true);
++            SetCurrentWaypoint(9);
++            SetEscortPaused(false);
++            break;
++        };
++    }
++
++    void UpdateEscortAI(const uint32 uiDiff)
++    {
++        if (!m_pInstance)
++            return;
++        
++        //if drake leave combat despawn him and reset event
++        if (HasEscortState(STATE_ESCORT_RETURNING))
++        {
++            m_pInstance->SetData(TYPE_BARREL_DIVERSION, FAIL);
++            m_creature->ForcedDespawn();
++            return;
+         }
+ 
+         //Return since we have no target
+@@ -141,28 +148,42 @@
+             return;
+ 
+         //Whirlwind
+-        if (Whirlwind_Timer < diff)
++        if (m_uiWhirlwind_Timer < uiDiff)
+         {
+             DoCastSpellIfCan(m_creature->getVictim(), SPELL_WHIRLWIND);
+-            Whirlwind_Timer = urand(20000, 25000);
+-        }else Whirlwind_Timer -= diff;
++            if (m_pInstance->IsRegularMode())
++                m_uiWhirlwind_Timer = urand(20000, 25000);
++            else
++                m_uiWhirlwind_Timer = urand(15000, 20000);
++        }else m_uiWhirlwind_Timer -= uiDiff;
+ 
+         //Fear
+-        if (Fear_Timer < diff)
++        if (m_uiFear_Timer < uiDiff)
+         {
+             DoScriptText(SAY_SHOUT, m_creature);
+             DoCastSpellIfCan(m_creature->getVictim(), SPELL_FRIGHTENING_SHOUT);
+-            Fear_Timer = urand(25000, 35000);
+-        }else Fear_Timer -= diff;
++            m_uiFear_Timer = urand(25000, 35000);
++        }else m_uiFear_Timer -= uiDiff;
+ 
+         //Mortal Strike
+-        if (MortalStrike_Timer < diff)
++        if (m_uiMortalStrike_Timer < uiDiff)
+         {
+             DoScriptText(SAY_MORTAL, m_creature);
+             DoCastSpellIfCan(m_creature->getVictim(), SPELL_MORTAL_STRIKE);
+-            MortalStrike_Timer = urand(20000, 30000);
+-        }else MortalStrike_Timer -= diff;
++            if (m_pInstance->IsRegularMode())
++                m_uiMortalStrike_Timer = urand(20000, 30000);
++            else
++                m_uiMortalStrike_Timer = urand(12000, 22000);
++        }else m_uiMortalStrike_Timer -= uiDiff;
+ 
++        //Exploding Shot; use only in HC-mode
++        if (m_uiExplodingShot_Timer < uiDiff && !m_pInstance->IsRegularMode())
++        {
++            DoCastSpellIfCan(m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0), SPELL_EXPLODING_SHOT);
++            m_uiExplodingShot_Timer = urand(15000, 25000);
++        }else if (!m_pInstance->IsRegularMode())
++            m_uiExplodingShot_Timer -= uiDiff;
++
+         DoMeleeAttackIfReady();
+     }
+ };
+@@ -178,7 +199,7 @@
+ 
+     newscript = new Script;
+     newscript->Name = "go_barrel_old_hillsbrad";
+-    newscript->pGOUse = &GOUse_go_barrel_old_hillsbrad;
++    newscript->pGOUse = &GOHello_go_barrel_old_hillsbrad;
+     newscript->RegisterSelf();
+ 
+     newscript = new Script;
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/instance_old_hillsbrad.cpp
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/instance_old_hillsbrad.cpp	(revision 1920)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/instance_old_hillsbrad.cpp	(working copy)
+@@ -16,8 +16,8 @@
+ 
+ /* ScriptData
+ SDName: Instance_Old_Hillsbrad
+-SD%Complete: 75
+-SDComment: If thrall escort fail, all parts will reset. In future, save sub-parts and continue from last known.
++SD%Complete: 90
++SDComment:
+ SDCategory: Caverns of Time, Old Hillsbrad Foothills
+ EndScriptData */
+ 
+@@ -30,7 +30,11 @@
+     m_uiThrallGUID(0),
+     m_uiTarethaGUID(0),
+     m_uiScarlocGUID(0),
+-    m_uiEpochGUID(0)
++    m_uiEpochGUID(0),
++    m_uiDrakeGUID(0),
++    m_uiTriggerGUID(0),
++    m_bIsRegularMode(instance->IsRegularDifficulty()),
++    h_bRelocated(0)
+ {
+     Initialize();
+ }
+@@ -70,6 +74,12 @@
+         case NPC_EPOCH:
+             m_uiEpochGUID = pCreature->GetGUID();
+             break;
++        case NPC_DRAKE:
++            m_uiDrakeGUID = pCreature->GetGUID();
++            break;
++        case NPC_TRIGGER:
++            m_uiTriggerGUID = pCreature->GetGUID();
++            break;
+     }
+ }
+ 
+@@ -81,38 +91,138 @@
+         if (Creature* pThrall = instance->GetCreature(m_uiThrallGUID))
+             pThrall->AI()->KilledUnit(pCreature);
+     }
++    else if (pCreature->GetEntry() == NPC_THRALL)
++    {
++        Creature *pEnemy;
++        if (pEnemy = GetEpoch())
++            pEnemy->ForcedDespawn();
++        else if (pEnemy = GetScarloc())
++            pEnemy->ForcedDespawn();
++    }
+ }
+ 
++void instance_old_hillsbrad::OnObjectCreate(GameObject* pObject)
++{
++    switch(pObject->GetEntry())
++    {
++        case GO_BARREL:
++            m_uilBarrelGUID.push_back(pObject->GetGUID());
++            break;
++        case GO_FLAME:
++            m_uilFlameGUID.push_back(pObject->GetGUID());
++            break;
++    }
++}
++
++void instance_old_hillsbrad::SetFlameSpawnState(bool bSpawn, Unit *pUnit)
++{
++    if (pUnit && bSpawn && m_uilFlameGUID.empty())
++    {
++        for (int i = 0; i < MAX_FLAMES; i++)
++        {
++            pUnit->SummonGameObject(GO_FLAME, FlamePos[i][0], FlamePos[i][1], FlamePos[i][2], FlamePos[i][3], TEMPSUMMON_MANUAL_DESPAWN, 0 , 0, 0, FlamePos[i][4], FlamePos[i][5], 100);
++            debug_log("SD2: Instance Old Hillsbrad: Summon roaring flame at %f/ %f/ %f/ with entry %i", FlamePos[i][0], FlamePos[i][1], FlamePos[i][2], GO_FLAME);
++        }
++    }
++    else if (!bSpawn)
++    {
++        for (std::list<uint64>::iterator itr = m_uilFlameGUID.begin(); itr != m_uilFlameGUID.end(); ++itr)
++        {
++            if (TemporarySummonGO *pObject =(TemporarySummonGO*)instance->GetGameObject((*itr)))
++            {
++                debug_log("SD2: Instance Old Hillsbrad: Unsummon roaring flame %u", pObject->GetEntry());
++                pObject->UnSummon();
++            }
++            else
++                debug_log("SD2: Instance Old Hillsbrad: Can not find Object");
++        }
++        m_uilFlameGUID.clear();
++    }
++}
++
+ void instance_old_hillsbrad::HandleThrallRelocation()
+ {
+     if (Creature* pThrall = instance->GetCreature(m_uiThrallGUID))
+     {
+-        debug_log("SD2: Instance Old Hillsbrad: Thrall relocation");
+-
+-        if (m_auiEncounter[TYPE_THRALL_PART4] == IN_PROGRESS)
++        if (m_auiEncounter[TYPE_THRALL_PART3] == DONE )
+         {
+             // boss failed, reloc to inn
+             pThrall->GetMap()->CreatureRelocation(pThrall, 2660.57f, 659.173f, 61.9370f, 0.0f);
+             m_auiEncounter[TYPE_THRALL_PART4] = NOT_STARTED;
++            debug_log("SD2: Instance Old Hillsbrad: Thrall relocate to inn");
+         }
+-        else if (m_auiEncounter[TYPE_THRALL_PART3] == IN_PROGRESS)
++        else if (m_auiEncounter[TYPE_THRALL_PART2] == DONE)
+         {
+-            // barn to inn failed, reloc to inn
+-            pThrall->GetMap()->CreatureRelocation(pThrall, 2660.57f, 659.173f, 61.9370f, 0.0f);
+-            m_auiEncounter[TYPE_THRALL_PART3] = DONE;
++            // barn to inn failed, reloc to barn
++            pThrall->GetMap()->CreatureRelocation(pThrall, 2486.91f, 626.356f, 58.0761f, 0.0f);
++            m_auiEncounter[TYPE_THRALL_PART3] = NOT_STARTED;
++            debug_log("SD2: Instance Old Hillsbrad: Thrall relocate to barn");
+         }
+-        else if (m_auiEncounter[TYPE_THRALL_PART2] == IN_PROGRESS)
++        else if (m_auiEncounter[TYPE_THRALL_PART1] == DONE)
+         {
+-            // keep to barn failed, reloc to barn
+-            pThrall->GetMap()->CreatureRelocation(pThrall, 2486.91f, 626.356f, 58.0761f, 0.0f);
+-            m_auiEncounter[TYPE_THRALL_PART2] = DONE;
++            // keep to barn failed, reloc to keep
++            pThrall->GetMap()->CreatureRelocation(pThrall, 2055.4f, 242.9f, 63.3418f, 0.0f);
++            m_auiEncounter[TYPE_THRALL_PART2] = NOT_STARTED;
++            debug_log("SD2: Instance Old Hillsbrad: Thrall relocate to keep");
+         }
+-        else if (m_auiEncounter[TYPE_THRALL_PART1] == IN_PROGRESS)
++        else
+         {
+             // didn't reach very far, back to the basement using default
+             m_auiEncounter[TYPE_THRALL_PART1] = NOT_STARTED;
++            debug_log("SD2: Instance Old Hillsbrad: Thrall relocate to basement");
+         }
++        SetFlameSpawnState(false);
++        SetFlameSpawnState(true, pThrall);
+     }
++    else
++    {
++        debug_log("SD2: Instance Old Hillsbrad: Summon Thrall");
++        if (Creature *pTrigger = instance->GetCreature(m_uiTriggerGUID))
++        {
++            if (m_uiThrallEventCount <= MAX_THRALL_DEATHS)
++            {
++                m_auiEncounter[TYPE_THRALL_EVENT] = IN_PROGRESS;
++                if (m_auiEncounter[TYPE_THRALL_PART3] == DONE )
++                {
++                    // summo to inn
++                    pTrigger->SummonCreature(NPC_THRALL, 2660.57f, 659.173f, 61.9370f, 0.0f, TEMPSUMMON_MANUAL_DESPAWN, 120000, true);
++                    SetFlameSpawnState(true, pThrall);
++                    m_auiEncounter[TYPE_THRALL_PART4] = NOT_STARTED;
++                }
++                else if (m_auiEncounter[TYPE_THRALL_PART2] == DONE)
++                {
++                    // summon to barn
++                    pTrigger->SummonCreature(NPC_THRALL, 2486.91f, 626.356f, 58.0761f, 0.0f, TEMPSUMMON_MANUAL_DESPAWN, 120000, true);
++                    SetFlameSpawnState(true, pThrall);
++                    m_auiEncounter[TYPE_THRALL_PART3] = NOT_STARTED;
++                }
++                else if (m_auiEncounter[TYPE_THRALL_PART1] == DONE)
++                {
++                    // summon to keep
++                    pTrigger->SummonCreature(NPC_THRALL, 2055.4f, 242.9f, 63.3418f, 0.0f, TEMPSUMMON_MANUAL_DESPAWN, 120000, true);
++                    SetFlameSpawnState(true, pThrall);
++                    m_auiEncounter[TYPE_THRALL_PART2] = NOT_STARTED;
++                }
++                else if (m_auiEncounter[TYPE_BARREL_DIVERSION] == DONE)
++                {
++                    // summon the basement using default
++                    pTrigger->SummonCreature(NPC_THRALL, 2231.89f, 119.956f, 82.2979f, 4.2f, TEMPSUMMON_MANUAL_DESPAWN, 120000, true);
++                    SetFlameSpawnState(true, pThrall);
++                    m_auiEncounter[TYPE_THRALL_PART1] = NOT_STARTED;
++                }
++                else
++                {
++                    // summon the basement using default
++                    pTrigger->SummonCreature(NPC_THRALL, 2231.89f, 119.956f, 82.2979f, 4.2f, TEMPSUMMON_MANUAL_DESPAWN, 120000, true);
++                    SetFlameSpawnState(false);
++                    m_auiEncounter[TYPE_THRALL_EVENT] = NOT_STARTED;
++                }
++                h_bRelocated = true;
++            }
++        }
++        else
++            debug_log("SD2: Instance Old Hillsbrad: Trigger Pointer is not valid");
++    }
+ }
+ 
+ void instance_old_hillsbrad::SetData(uint32 uiType, uint32 uiData)
+@@ -121,7 +231,7 @@
+     {
+         case TYPE_BARREL_DIVERSION:
+         {
+-            if (uiData == IN_PROGRESS)
++            if (uiData == IN_PROGRESS && m_auiEncounter[TYPE_BARREL_DIVERSION] != DONE)
+             {
+                 if (m_uiBarrelCount >= 5)
+                     return;
+@@ -131,20 +241,38 @@
+ 
+                 debug_log("SD2: Instance Old Hillsbrad: go_barrel_old_hillsbrad count %u", m_uiBarrelCount);
+ 
+-                m_auiEncounter[TYPE_BARREL_DIVERSION] = IN_PROGRESS;
+-
+                 if (m_uiBarrelCount == 5)
+                 {
+                     UpdateLodgeQuestCredit();
+ 
+                     if (Player* pPlayer = GetPlayerInMap())
+-                        pPlayer->SummonCreature(NPC_DRAKE, 2128.43f, 71.01f, 64.42f, 1.74f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 1800000);
++                    {
++                        pPlayer->SummonCreature(NPC_DRAKE, 2207.14f, 130.484f, 87.9561f, 1.74f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 1800000);
++                    }
+                     else
+                         debug_log("SD2: Instance Old Hillsbrad: SetData (Type: %u Data %u) cannot find any pPlayer.", uiType, uiData);
+-
+-                    m_auiEncounter[TYPE_BARREL_DIVERSION] = DONE;
+                 }
+             }
++            else if (uiData == FAIL)
++            {
++                m_uiBarrelCount = 0;
++                DoUpdateWorldState(WORLD_STATE_OH, m_uiBarrelCount);
++                for (std::list<uint64>::iterator itr = m_uilBarrelGUID.begin();
++                    itr != m_uilBarrelGUID.end(); ++itr)
++                {
++                    if (GameObject* pObject = instance->GetGameObject((*itr)))
++                    {
++                        pObject->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                        pObject->SetGoType(GAMEOBJECT_TYPE_GOOBER);
++                        debug_log("SD2: Instance Old Hillsbrad: Set barrel type to GOOBER");
++                    }
++                    else
++                        debug_log("SD2: Instance Old Hillsbrad: GO Pointer is not valid");
++                }
++                SetFlameSpawnState(false);
++                uiData = NOT_STARTED;
++            }
++            m_auiEncounter[TYPE_BARREL_DIVERSION] = uiData;
+             break;
+         }
+         case TYPE_THRALL_EVENT:
+@@ -155,22 +283,23 @@
+ 
+             if (uiData == FAIL)
+             {
+-                if (m_uiThrallEventCount <= 20)
++                ++m_uiThrallEventCount;
++                if (m_uiThrallEventCount <= MAX_THRALL_DEATHS)
+                 {
+-                    ++m_uiThrallEventCount;
+                     debug_log("SD2: Instance Old Hillsbrad: Thrall event failed %u times.", m_uiThrallEventCount);
+-
+-                    HandleThrallRelocation();
++                    m_auiEncounter[TYPE_THRALL_EVENT] = IN_PROGRESS;
+                 }
+-                else if (m_uiThrallEventCount > 20)
++                else if (m_uiThrallEventCount > MAX_THRALL_DEATHS)
+                 {
+                     m_auiEncounter[TYPE_THRALL_EVENT] = uiData;
+                     m_auiEncounter[TYPE_THRALL_PART1] = uiData;
+                     m_auiEncounter[TYPE_THRALL_PART2] = uiData;
+                     m_auiEncounter[TYPE_THRALL_PART3] = uiData;
+                     m_auiEncounter[TYPE_THRALL_PART4] = uiData;
++
+                     debug_log("SD2: Instance Old Hillsbrad: Thrall event failed %u times. Reset instance required.", m_uiThrallEventCount);
+                 }
++                SaveData();
+             }
+             else
+                 m_auiEncounter[TYPE_THRALL_EVENT] = uiData;
+@@ -195,8 +324,51 @@
+             debug_log("SD2: Instance Old Hillsbrad: Thrall event part IV adjusted to data %u.",uiData);
+             break;
+     }
++
++    if (uiData == DONE)
++        SaveData();
+ }
+ 
++void instance_old_hillsbrad::SaveData()
++{
++    OUT_SAVE_INST_DATA;
++
++    std::ostringstream saveStream;
++    saveStream << m_auiEncounter[TYPE_BARREL_DIVERSION] << " " << m_auiEncounter[TYPE_THRALL_EVENT] << " " << m_auiEncounter[TYPE_THRALL_PART1] << " " << m_auiEncounter[TYPE_THRALL_PART2] << " " << m_auiEncounter[TYPE_THRALL_PART3] << " " << m_auiEncounter[TYPE_THRALL_PART4] << " " << m_uiThrallEventCount;
++
++    strSaveData = saveStream.str();
++
++    SaveToDB();
++    OUT_SAVE_INST_DATA_COMPLETE;
++}
++
++
++const char* instance_old_hillsbrad::Save()
++{
++    return strSaveData.c_str();
++}
++
++void instance_old_hillsbrad::Load(const char* chrIn)
++{
++    if (!chrIn)
++    {
++        OUT_LOAD_INST_DATA_FAIL;
++        return;
++    }
++
++    OUT_LOAD_INST_DATA(chrIn);
++
++    std::istringstream loadStream(chrIn);
++
++    loadStream >> m_auiEncounter[TYPE_BARREL_DIVERSION] >> m_auiEncounter[TYPE_THRALL_EVENT] >> m_auiEncounter[TYPE_THRALL_PART1] >> m_auiEncounter[TYPE_THRALL_PART2] >> m_auiEncounter[TYPE_THRALL_PART3] >> m_auiEncounter[TYPE_THRALL_PART4] >> m_uiThrallEventCount;
++
++    for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
++        if (i != TYPE_THRALL_EVENT && m_auiEncounter[i] == IN_PROGRESS)
++            m_auiEncounter[i] = NOT_STARTED;
++
++    OUT_LOAD_INST_DATA_COMPLETE;
++}
++
+ uint32 instance_old_hillsbrad::GetData(uint32 uiData)
+ {
+     switch(uiData)
+@@ -220,6 +392,13 @@
+ 
+ uint64 instance_old_hillsbrad::GetData64(uint32 uiData)
+ {
++    switch(uiData)
++    {
++    case NPC_THRALL:
++        return m_uiThrallGUID;
++    case NPC_TRIGGER:
++        return m_uiTriggerGUID;
++    }
+     return 0;
+ }
+ 
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad.cpp
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad.cpp	(revision 1920)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad.cpp	(working copy)
+@@ -16,7 +16,7 @@
+ 
+ /* ScriptData
+ SDName: Old_Hillsbrad
+-SD%Complete: 60
++SD%Complete: 80
+ SDComment: Quest support: 10283, 10284. All friendly NPC's. Thrall waypoints fairly complete, missing many details, but possible to complete escort.
+ SDCategory: Caverns of Time, Old Hillsbrad Foothills
+ EndScriptData */
+@@ -53,7 +53,7 @@
+ 
+ enum
+ {
+-    GOSSIP_ID_UNKNOWN_TEXT          = -1000000,
++    GOSSIP_ID_UNKNOWN_TEXT          = -2500007,
+     GOSSIP_ITEM_READY               = -3560000,
+ 
+     TEXT_ID_HAS_BOMBS               = 9780,
+@@ -71,7 +71,9 @@
+ 
+ bool GossipSelect_npc_brazen(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
+ {
+-    if (uiAction == GOSSIP_ACTION_INFO_DEF+1)
++	ScriptedInstance* pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++
++    if (uiAction == GOSSIP_ACTION_INFO_DEF+1 && pInstance && pInstance->GetData(TYPE_BARREL_DIVERSION) != DONE)
+     {
+         if (!pPlayer->HasItemCount(ITEM_ENTRY_BOMBS, 1))
+             pPlayer->SEND_GOSSIP_MENU(TEXT_ID_HAS_BOMBS, pCreature->GetGUID());
+@@ -95,6 +97,12 @@
+     TEXT_ID_GOT_ITEM                = 9515,
+ };
+ 
++#define TELEPORT_X  -8343.983f
++#define TELEPORT_Y  -4056.016f
++#define TELEPORT_Z  -207.913f
++#define TELEPORT_O  3.222f
++#define TELEPORT_MAP 1
++
+ bool GossipHello_npc_erozion(Player* pPlayer, Creature* pCreature)
+ {
+     if (pCreature->isQuestGiver())
+@@ -106,8 +114,8 @@
+         pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, GOSSIP_ITEM_NEED_BOMBS, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+ 
+     // Need info, should have option to teleport or not
+-    /*if (!pPlayer->GetQuestRewardStatus(QUEST_ENTRY_RETURN) && pPlayer->GetQuestStatus(QUEST_ENTRY_RETURN) == QUEST_STATUS_COMPLETE)
+-        pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "[PH] Teleport please, i'm tired.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);*/
++    if (pInstance && pInstance->GetData(TYPE_THRALL_EVENT) == DONE)
++        pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, "Ich bin müde, bringt mich bitte hier weg.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
+ 
+     pPlayer->SEND_GOSSIP_MENU(TEXT_ID_DEFAULT, pCreature->GetGUID());
+ 
+@@ -116,6 +124,7 @@
+ 
+ bool GossipSelect_npc_erozion(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
+ {
++    ScriptedInstance* pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
+     if (uiAction == GOSSIP_ACTION_INFO_DEF+1)
+     {
+         if (Item* pItem = pPlayer->StoreNewItemInInventorySlot(ITEM_ENTRY_BOMBS, 1))
+@@ -125,7 +134,10 @@
+     }
+ 
+     if (uiAction == GOSSIP_ACTION_INFO_DEF+2)
++    {
+         pPlayer->CLOSE_GOSSIP_MENU();
++        pPlayer->TeleportTo(TELEPORT_MAP, TELEPORT_X, TELEPORT_Y, TELEPORT_Z, TELEPORT_O);
++    }
+ 
+     return true;
+ }
+@@ -192,10 +204,12 @@
+     // Misc for Thrall
+     SPELL_STRIKE                    = 14516,
+     SPELL_SHIELD_BLOCK              = 12169,
+-    SPELL_SUMMON_EROZION_IMAGE      = 33954,                // if thrall dies during escort?
++    SPELL_SUMMON_EROZION_IMAGE      = 33954,                // if thrall dies during escort
+ 
+-    EQUIP_ID_WEAPON                 = 927,
+-    EQUIP_ID_SHIELD                 = 20913,
++    THRALL_WEAPON_MODEL             = 22106,
++    THRALL_WEAPON_INFO              = 218169346,
++    THRALL_SHIELD_MODEL             = 18662,
++    THRALL_SHIELD_INFO              = 234948100,
+     MODEL_THRALL_UNEQUIPPED         = 17292,
+     MODEL_THRALL_EQUIPPED           = 18165,
+ 
+@@ -224,6 +238,7 @@
+     NPC_SKARLOC_MOUNT               = 18798,
+     MODEL_SKARLOC_MOUNT             = 18223,
+     NPC_EROZION                     = 18723,
++    NPC_IMAGE_OF_EROZIO             = 19438,
+     NPC_THRALL_QUEST_TRIGGER        = 20156,
+ 
+     // gossip
+@@ -250,8 +265,22 @@
+     {
+         m_pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData();
+         m_bHadMount = false;
+-        pCreature->SetActiveObjectState(true);              // required for proper relocation
+         Reset();
++        if (m_pInstance->GetData(TYPE_THRALL_PART1) == DONE)
++        {
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_DISPLAY, THRALL_WEAPON_MODEL);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO, THRALL_WEAPON_INFO);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+1, 781);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_DISPLAY+1, THRALL_SHIELD_MODEL);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+2, THRALL_SHIELD_INFO);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+3, 1038);
++            m_creature->SetDisplayId(MODEL_THRALL_EQUIPPED);
++        }
++        else
++        {
++            SetEquipmentSlots(true);
++            m_creature->SetDisplayId(MODEL_THRALL_UNEQUIPPED);
++        }
+     }
+ 
+     instance_old_hillsbrad* m_pInstance;
+@@ -260,13 +289,26 @@
+ 
+     bool m_bIsLowHp;
+     bool m_bHadMount;
++    bool m_bMountUp;
++    bool m_bRelocated;
+ 
++    //timer
++    uint32 m_uiMount_Timer;
++    uint32 m_uiShieldBlock_Timer;
++    uint32 m_uiStrike_Timer;
++
+     void Reset()
+     {
+         m_uiScarlocMountGUID = 0;
+ 
+         m_bIsLowHp = false;
++        m_bMountUp = false;
++        m_bRelocated = false;
+ 
++        m_uiMount_Timer                 = 3000;
++        m_uiStrike_Timer                = urand(1000, 5000);
++        m_uiShieldBlock_Timer           = urand(3000, 6000);
++
+         if (m_bHadMount)
+             DoMount();
+ 
+@@ -274,7 +316,12 @@
+         {
+             DoUnmount();
+             m_bHadMount = false;
+-            SetEquipmentSlots(true);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_DISPLAY, 0);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO, 0);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+1, 0);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_DISPLAY+1, 0);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+2, 0);
++            m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+3, 0);
+             m_creature->SetDisplayId(MODEL_THRALL_UNEQUIPPED);
+         }
+     }
+@@ -298,16 +345,26 @@
+     {
+         if (!m_pInstance)
+             return;
++        
++        Unit *pUnit;
+ 
+         switch(uiPoint)
+         {
++            //ToDo: Thrall speaks with the armorer and then fights against him alone.
++            /*case 5:
++                m_creature->SummonCreature(NPC_ARMORER, 2181.87f, 112.46f, 89.45f, 0.26f, TEMPSUMMON_CORPSE_TIMED_DESPAWN,5000);
++                break;*/
+             case 8:
+                 SetRun(false);
+-                m_creature->SummonCreature(NPC_ARMORER, 2181.87f, 112.46f, 89.45f, 0.26f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT,5000);
+                 break;
+             case 9:
+                 DoScriptText(SAY_TH_ARMORY, m_creature);
+-                SetEquipmentSlots(false, EQUIP_ID_WEAPON, EQUIP_ID_SHIELD, EQUIP_NO_CHANGE);
++                m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_DISPLAY, THRALL_WEAPON_MODEL);
++                m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO, THRALL_WEAPON_INFO);
++                m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+1, 781);
++                m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_DISPLAY+1, THRALL_SHIELD_MODEL);
++                m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+2, THRALL_SHIELD_INFO);
++                m_creature->SetUInt32Value(UNIT_VIRTUAL_ITEM_INFO+3, 1038);
+                 break;
+             case 10:
+                 m_creature->SetDisplayId(MODEL_THRALL_EQUIPPED);
+@@ -315,27 +372,45 @@
+             case 11:
+                 SetRun();
+                 break;
+-            case 15:
+-                m_creature->SummonCreature(NPC_RIFLE, 2200.28f, 137.37f, 87.93f, 5.07f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_WARDEN, 2197.44f, 131.83f, 87.93f, 0.78f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_VETERAN, 2203.62f, 135.40f, 87.93f, 3.70f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_VETERAN, 2200.75f, 130.13f, 87.93f, 1.48f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++            case 12:
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_RIFLE, 2187.298584f, 141.663040f, 88.216331f, 5.8f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_WARDEN, 2182.968506f, 143.899307f, 88.216331f, 5.8f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_VETERAN, 2186.285400f, 144.622391f, 88.216331f, 5.8f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_VETERAN, 2184.228516f, 141.021072f, 88.216331f, 5.8f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+-            case 21:
+-                m_creature->SummonCreature(NPC_RIFLE, 2135.80f, 154.01f, 67.45f, 4.98f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_WARDEN, 2144.36f, 151.87f, 67.74f, 4.46f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_VETERAN, 2142.12f, 154.41f, 67.12f, 4.56f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_VETERAN, 2138.08f, 155.38f, 67.24f, 4.60f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++            case 17:
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_RIFLE, 2135.80f, 154.01f, 67.45f, 4.98f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_WARDEN, 2144.36f, 151.87f, 67.74f, 4.46f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_VETERAN, 2142.12f, 154.41f, 67.12f, 4.56f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_VETERAN, 2138.08f, 155.38f, 67.24f, 4.60f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+-            case 25:
+-                m_creature->SummonCreature(NPC_RIFLE, 2102.98f, 192.17f, 65.24f, 6.02f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_WARDEN, 2108.48f, 198.75f, 65.18f, 5.15f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_VETERAN, 2106.11f, 197.29f, 65.18f, 5.63f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_VETERAN, 2104.18f, 194.82f, 65.18f, 5.75f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++            case 23:
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_RIFLE, 2102.98f, 192.17f, 65.24f, 6.02f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_WARDEN, 2108.48f, 198.75f, 65.18f, 5.15f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_VETERAN, 2106.11f, 197.29f, 65.18f, 5.63f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_VETERAN, 2104.18f, 194.82f, 65.18f, 5.75f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+             case 29:
+                 DoScriptText(SAY_TH_SKARLOC_MEET, m_creature);
+-                m_creature->SummonCreature(NPC_SCARLOC, 2036.48f, 271.22f, 63.43f, 5.27f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                m_creature->SummonCreature(NPC_SCARLOC, 2036.48f, 271.22f, 63.43f, 5.27f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 1800000);
+                 break;
+             case 30:
+                 SetEscortPaused(true);
+@@ -347,14 +422,26 @@
+                 DoMount();
+                 SetRun();
+                 break;
+-            case 37:
++            case 36:
+                 // possibly regular patrollers? If so, remove this and let database handle them
+-                m_creature->SummonCreature(NPC_WATCHMAN, 2124.26f, 522.16f, 56.87f, 3.99f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_WATCHMAN, 2121.69f, 525.37f, 57.11f, 4.01f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_SENTRY, 2124.65f, 524.55f, 56.63f, 3.98f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_WATCHMAN, 2124.26f, 522.16f, 56.87f, 3.99f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_WATCHMAN, 2121.69f, 525.37f, 57.11f, 4.01f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_SENTRY, 2124.65f, 524.55f, 56.63f, 3.98f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+             case 59:
+-                m_creature->SummonCreature(NPC_SKARLOC_MOUNT, 2488.64f, 625.77f, 58.26f, 4.71f, TEMPSUMMON_TIMED_DESPAWN, 10000);
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_SKARLOC_MOUNT, 2488.64f, 625.77f, 58.26f, 4.71f, TEMPSUMMON_TIMED_DESPAWN, 10000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 DoUnmount();
+                 m_bHadMount = false;
+                 SetRun(false);
+@@ -362,19 +449,25 @@
+             case 60:
+                 m_creature->HandleEmote(EMOTE_ONESHOT_EXCLAMATION);
+                 // make horsie run off
++                m_pInstance->SetData(TYPE_THRALL_PART2, DONE);
+                 SetEscortPaused(true);
+                 m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+-                m_pInstance->SetData(TYPE_THRALL_PART2, DONE);
+                 SetRun();
+                 break;
+             case 64:
+                 SetRun(false);
+                 break;
+             case 68:
+-                m_creature->SummonCreature(NPC_BARN_PROTECTOR, 2500.22f, 692.60f, 55.50f, 2.84f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_BARN_LOOKOUT, 2500.13f, 696.55f, 55.51f, 3.38f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_BARN_GUARDSMAN, 2500.55f, 693.64f, 55.50f, 3.14f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_BARN_GUARDSMAN, 2500.94f, 695.81f, 55.50f, 3.14f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_BARN_PROTECTOR, 2500.22f, 692.60f, 55.50f, 2.84f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_BARN_LOOKOUT, 2500.13f, 696.55f, 55.51f, 3.38f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_BARN_GUARDSMAN, 2500.55f, 693.64f, 55.50f, 3.14f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_BARN_GUARDSMAN, 2500.94f, 695.81f, 55.50f, 3.14f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+             case 71:
+                 SetRun();
+@@ -383,10 +476,16 @@
+                 SetRun(false);
+                 break;
+             case 83:
+-                m_creature->SummonCreature(NPC_CHURCH_PROTECTOR, 2627.33f, 646.82f, 56.03f, 4.28f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 5000);
+-                m_creature->SummonCreature(NPC_CHURCH_LOOKOUT, 2624.14f, 648.03f, 56.03f, 4.50f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 5000);
+-                m_creature->SummonCreature(NPC_CHURCH_GUARDSMAN, 2625.32f, 649.60f, 56.03f, 4.38f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 5000);
+-                m_creature->SummonCreature(NPC_CHURCH_GUARDSMAN, 2627.22f, 649.00f, 56.03f, 4.34f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 5000);
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_CHURCH_PROTECTOR, 2627.33f, 646.82f, 56.03f, 4.28f,TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_CHURCH_LOOKOUT, 2624.14f, 648.03f, 56.03f, 4.50f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_CHURCH_GUARDSMAN, 2625.32f, 649.60f, 56.03f, 4.38f,TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_CHURCH_GUARDSMAN, 2627.22f, 649.00f, 56.03f, 4.34f,TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+             case 84:
+                 DoScriptText(SAY_TH_CHURCH_END, m_creature);
+@@ -395,20 +494,25 @@
+             case 91:
+                 SetRun(false);
+                 break;
+-            case 93:
+-                m_creature->SummonCreature(NPC_INN_PROTECTOR, 2652.71f, 660.31f, 61.93f, 1.67f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_INN_LOOKOUT, 2648.96f, 662.59f, 61.93f, 0.79f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_INN_GUARDSMAN, 2657.36f, 662.34f, 61.93f, 2.68f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
+-                m_creature->SummonCreature(NPC_INN_GUARDSMAN, 2656.39f, 659.77f, 61.93f, 2.61f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++            case 92:
++                if (pUnit = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(NPC_TRIGGER)))
++                {
++                    pUnit->setFaction(168);
++                    pUnit->SummonCreature(NPC_INN_PROTECTOR, 2652.71f, 660.31f, 61.93f, 1.67f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_INN_LOOKOUT, 2648.96f, 662.59f, 61.93f, 0.79f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_INN_GUARDSMAN, 2657.36f, 662.34f, 61.93f, 2.68f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->SummonCreature(NPC_INN_GUARDSMAN, 2656.39f, 659.77f, 61.93f, 2.61f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 30000);
++                    pUnit->setFaction(35);
++                }else
++                    debug_log("SD2: Instance Old Hillsbrad: Trigger pointer is not valid.");
+                 break;
+             case 94:
++                m_pInstance->SetData(TYPE_THRALL_PART3, DONE);
+                 if (Creature* pTaretha = m_pInstance->GetTaretha())
+                     DoScriptText(SAY_TA_ESCAPED, pTaretha, m_creature);
+-
+                 break;
+             case 95:
+                 DoScriptText(SAY_TH_MEET_TARETHA, m_creature);
+-                m_pInstance->SetData(TYPE_THRALL_PART3, DONE);
+                 SetEscortPaused(true);
+                 break;
+             case 96:
+@@ -427,7 +531,10 @@
+                 SetEscortPaused(true);
+ 
+                 if (Creature* pEpoch = m_pInstance->GetEpoch())
++                {
+                     m_creature->SetFacingToObject(pEpoch);
++                    m_pInstance->SetData(TYPE_THRALL_PART4, IN_PROGRESS);
++                }
+ 
+                 break;
+             case 106:                                       // epoch is dead, proceeding with cheering
+@@ -485,8 +592,7 @@
+ 
+     void DoMount()
+     {
+-        m_creature->Mount(MODEL_SKARLOC_MOUNT);
+-        m_creature->SetSpeedRate(MOVE_RUN, SPEED_MOUNT);
++        m_bMountUp = true;
+     }
+ 
+     void DoUnmount()
+@@ -532,7 +638,7 @@
+ 
+     void KilledUnit(Unit* pVictim)
+     {
+-        switch(urand(0, 2))
++        switch(urand(0, 3))
+         {
+             case 0: DoScriptText(SAY_TH_RANDOM_KILL1, m_creature); break;
+             case 1: DoScriptText(SAY_TH_RANDOM_KILL2, m_creature); break;
+@@ -548,6 +654,8 @@
+     void JustDied(Unit* pKiller)
+     {
+         DoScriptText(urand(0, 1) ? SAY_TH_RANDOM_DIE1 : SAY_TH_RANDOM_DIE2, m_creature);
++        m_creature->SummonCreature(NPC_IMAGE_OF_EROZIO, m_creature->GetPositionX(), m_creature->GetPositionY() + 5, m_creature->GetPositionZ(), 0, TEMPSUMMON_TIMED_DESPAWN, 10000);
++        m_creature->Respawn();
+     }
+ 
+     void CorpseRemoved(uint32 &uiRespawnDelay)
+@@ -559,59 +667,105 @@
+             uiRespawnDelay = 4 * HOUR;
+     }
+ 
++    void SetCheckpoint(uint32 CheckpointNr)
++    {
++        SetEscortPaused(true);
++        SetCurrentWaypoint(0);
++        switch(CheckpointNr)
++        {
++        case 0:
++            SetCurrentWaypoint(1);                      // basement
++            SetRun(true);
++            break;
++        case 1:
++            SetCurrentWaypoint(31);                     // keep
++            SetRun(false);
++            break;
++        case 2:
++            SetCurrentWaypoint(61);                     // barn
++            SetRun(false);
++            break;
++        case 3:
++            SetCurrentWaypoint(96);                     // inn
++            SetRun(true);
++            break;
++        }
++    }
++
+     void JustRespawned()
+     {
+         if (!m_pInstance)
+             return;
+ 
++        m_pInstance->SetData(TYPE_THRALL_EVENT, FAIL);
++        if (m_pInstance->GetData(TYPE_THRALL_EVENT) == IN_PROGRESS)
++            m_pInstance->HandleThrallRelocation();
++        else
++            m_creature->ForcedDespawn();
++
+         Reset();
+ 
+-        if (m_pInstance->GetData(TYPE_THRALL_EVENT) == IN_PROGRESS)
++        m_bHadMount = false;
++        DoUnmount();
++        SetEscortPaused(true);
++        m_creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
++        m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
++    }
++
++    void UpdateEscortAI(const uint32 uiDiff)
++    {
++        if (!m_pInstance)
++            return;
++        
++        if (!m_bRelocated && !m_pInstance->IsRelocated())
+         {
+-            SetEscortPaused(true);
++            m_pInstance->HandleThrallRelocation();
++            m_bRelocated = true;
++        }
+ 
+-            m_bHadMount = false;
+-            DoUnmount();
++        if (m_bMountUp)
++        {
++            if (m_uiMount_Timer <= uiDiff)
++            {
++                m_creature->Mount(MODEL_SKARLOC_MOUNT);
++                m_creature->SetSpeedRate(MOVE_RUN, SPEED_MOUNT);
++                m_bMountUp = false;
++                m_uiMount_Timer = 3000;
++            }
++            else m_uiMount_Timer -= uiDiff;
++        }
++        else 
++        {
++            // TODO: add his abilities'n-crap here
++            if (!m_bIsLowHp && m_creature->GetHealthPercent() < 20.0f)
++            {
++                DoScriptText(urand(0, 1) ? SAY_TH_RANDOM_LOW_HP1 : SAY_TH_RANDOM_LOW_HP2, m_creature);
++                m_bIsLowHp = true;
++            }
++            else if (m_creature->GetHealthPercent() >= 20.0f)
++                m_bIsLowHp = false;
+ 
+-            m_creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
++            if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++                return;
+ 
+-            // check current states before fail and set spesific for the part
+-            if (m_pInstance->GetData(TYPE_THRALL_PART1) == IN_PROGRESS)
++            if (m_uiStrike_Timer <= uiDiff)
+             {
+-                SetCurrentWaypoint(1);                      // basement
++                DoCastSpellIfCan(m_creature->getVictim(), SPELL_STRIKE);
++                m_uiStrike_Timer = urand(1000, 5000);
++                
++            }
++            else m_uiStrike_Timer -= uiDiff;
+ 
+-                SetEquipmentSlots(true);
+-                m_creature->SetDisplayId(MODEL_THRALL_UNEQUIPPED);
+-
+-                m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+-            }
+-            else if (m_pInstance->GetData(TYPE_THRALL_PART2) == IN_PROGRESS)
++            if (m_uiShieldBlock_Timer <= uiDiff)
+             {
+-                SetCurrentWaypoint(61);                     // barn
+-                m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
++                DoCastSpellIfCan(m_creature, SPELL_SHIELD_BLOCK);
++                m_uiShieldBlock_Timer = 6000;
+             }
+-            else if (m_pInstance->GetData(TYPE_THRALL_PART3) == IN_PROGRESS || m_pInstance->GetData(TYPE_THRALL_PART4) == IN_PROGRESS)
+-                SetCurrentWaypoint(96);                     // inn
++            else m_uiShieldBlock_Timer -= uiDiff;
+ 
+-            // fail, and relocation handled in instance script
+-            m_pInstance->SetData(TYPE_THRALL_EVENT, FAIL);
+-        }
+-    }
++            DoMeleeAttackIfReady();
+ 
+-    void UpdateEscortAI(const uint32 uiDiff)
+-    {
+-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+-            return;
+-
+-        // TODO: add his abilities'n-crap here
+-
+-        if (!m_bIsLowHp && m_creature->GetHealthPercent() < 20.0f)
+-        {
+-            DoScriptText(urand(0, 1) ? SAY_TH_RANDOM_LOW_HP1 : SAY_TH_RANDOM_LOW_HP2, m_creature);
+-            m_bIsLowHp = true;
+         }
+-
+-        DoMeleeAttackIfReady();
+     }
+ };
+ 
+@@ -630,7 +784,7 @@
+ 
+     if (instance_old_hillsbrad* pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData())
+     {
+-        if (pInstance->GetData(TYPE_BARREL_DIVERSION) == DONE && !pInstance->GetData(TYPE_THRALL_EVENT))
++        if (pInstance->GetData(TYPE_BARREL_DIVERSION) == DONE && !pInstance->GetData(TYPE_THRALL_PART1))
+         {
+             pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, GOSSIP_ID_UNKNOWN_TEXT, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+             pPlayer->SEND_GOSSIP_MENU(TEXT_ID_START, pCreature->GetGUID());
+@@ -654,54 +808,82 @@
+ bool GossipSelect_npc_thrall_old_hillsbrad(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
+ {
+     instance_old_hillsbrad* pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData();
+-
+-    switch(uiAction)
++    
++    if (!pInstance)
++        return true;
++    
++    if (npc_thrall_old_hillsbradAI* pThrall = dynamic_cast<npc_thrall_old_hillsbradAI*>(pCreature->AI()))
+     {
+-        case GOSSIP_ACTION_INFO_DEF+1:
++        switch(uiAction)
+         {
+-            pPlayer->CLOSE_GOSSIP_MENU();
++            case GOSSIP_ACTION_INFO_DEF+1:
++            {
++                pPlayer->CLOSE_GOSSIP_MENU();
+ 
+-            pInstance->SetData(TYPE_THRALL_EVENT, IN_PROGRESS);
+-            pInstance->SetData(TYPE_THRALL_PART1, IN_PROGRESS);
++                pInstance->SetData(TYPE_THRALL_EVENT, IN_PROGRESS);
++                pInstance->SetData(TYPE_THRALL_PART1, IN_PROGRESS);
+ 
+-            DoScriptText(SAY_TH_START_EVENT_PART1, pCreature);
++                DoScriptText(SAY_TH_START_EVENT_PART1, pCreature);
++                if (Player *pPlayer = pInstance->GetPlayerInMap())
++                {
++                    if (pThrall->HasEscortState(STATE_ESCORT_ESCORTING))
++                        pThrall->SetCheckpoint(0);
++                    else
++                    {
++                        pThrall->Start(true, pPlayer->GetGUID(), NULL, true);
++                        pThrall->SetCheckpoint(0);
++                    }
++                    pThrall->StartWP();
++                }
++                break;
++            }
++            case GOSSIP_ACTION_INFO_DEF+2:
++            {
++                pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, GOSSIP_ITEM_SKARLOC2, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
++                pPlayer->SEND_GOSSIP_MENU(TEXT_ID_SKARLOC2, pCreature->GetGUID());
++                break;
++            }
++            case GOSSIP_ACTION_INFO_DEF+20:
++            {
++                pPlayer->SEND_GOSSIP_MENU(TEXT_ID_SKARLOC3, pCreature->GetGUID());
++                pPlayer->CLOSE_GOSSIP_MENU();
++                pCreature->SummonCreature(NPC_SKARLOC_MOUNT, 2038.81f, 270.26f, 63.20f, 5.41f, TEMPSUMMON_TIMED_DESPAWN,12000);
++                pInstance->SetData(TYPE_THRALL_EVENT, IN_PROGRESS);
++                pInstance->SetData(TYPE_THRALL_PART2, IN_PROGRESS);
+ 
+-            if (npc_thrall_old_hillsbradAI* pThrallAI = dynamic_cast<npc_thrall_old_hillsbradAI*>(pCreature->AI()))
+-                pThrallAI->Start(true, pPlayer->GetGUID());
+-
+-            break;
++                DoScriptText(SAY_TH_START_EVENT_PART2, pCreature);
++                if (Player *pPlayer = pInstance->GetPlayerInMap())
++                {
++                    if (pThrall->HasEscortState(STATE_ESCORT_ESCORTING))
++                        pThrall->SetCheckpoint(1);
++                    else
++                    {
++                        pThrall->Start(true, pPlayer->GetGUID(), NULL, true);
++                        pThrall->SetCheckpoint(1);
++                    }
++                    pThrall->StartWP();
++                }
++                break;
++            }
++            case GOSSIP_ACTION_INFO_DEF+3:
++            {
++                pPlayer->CLOSE_GOSSIP_MENU();
++                pInstance->SetData(TYPE_THRALL_EVENT, IN_PROGRESS);
++                pInstance->SetData(TYPE_THRALL_PART3, IN_PROGRESS);
++                if (Player *pPlayer = pInstance->GetPlayerInMap())
++                {
++                    if (pThrall->HasEscortState(STATE_ESCORT_ESCORTING))
++                        pThrall->SetCheckpoint(2);
++                    else
++                    {
++                        pThrall->Start(true, pPlayer->GetGUID(), NULL, true);
++                        pThrall->SetCheckpoint(2);
++                    }
++                    pThrall->StartWP();
++                }
++                break;
++            }
+         }
+-        case GOSSIP_ACTION_INFO_DEF+2:
+-        {
+-            pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, GOSSIP_ITEM_SKARLOC2, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
+-            pPlayer->SEND_GOSSIP_MENU(TEXT_ID_SKARLOC2, pCreature->GetGUID());
+-            break;
+-        }
+-        case GOSSIP_ACTION_INFO_DEF+20:
+-        {
+-            pPlayer->SEND_GOSSIP_MENU(TEXT_ID_SKARLOC3, pCreature->GetGUID());
+-
+-            pCreature->SummonCreature(NPC_SKARLOC_MOUNT, 2038.81f, 270.26f, 63.20f, 5.41f, TEMPSUMMON_TIMED_DESPAWN,12000);
+-            pInstance->SetData(TYPE_THRALL_PART2, IN_PROGRESS);
+-
+-            DoScriptText(SAY_TH_START_EVENT_PART2, pCreature);
+-
+-            if (npc_thrall_old_hillsbradAI* pThrallAI = dynamic_cast<npc_thrall_old_hillsbradAI*>(pCreature->AI()))
+-                pThrallAI->StartWP();
+-
+-            break;
+-        }
+-        case GOSSIP_ACTION_INFO_DEF+3:
+-        {
+-            pPlayer->CLOSE_GOSSIP_MENU();
+-
+-            pInstance->SetData(TYPE_THRALL_PART3, IN_PROGRESS);
+-
+-            if (npc_thrall_old_hillsbradAI* pThrallAI = dynamic_cast<npc_thrall_old_hillsbradAI*>(pCreature->AI()))
+-                pThrallAI->StartWP();
+-
+-            break;
+-        }
+     }
+     return true;
+ }
+@@ -744,7 +926,7 @@
+             break;
+         case 7:
+             m_creature->HandleEmote(EMOTE_ONESHOT_CHEER);
+-            m_creature->SummonCreature(NPC_EROZION, 2646.47f, 680.416f, 55.38f, 4.16f, TEMPSUMMON_TIMED_DESPAWN, 120000);
++            m_creature->SummonCreature(NPC_EROZION, 2646.47f, 680.416f, 55.38f, 4.16f, TEMPSUMMON_MANUAL_DESPAWN, 120000);
+             SetEscortPaused(true);
+             SetRun(false);
+             break;
+@@ -758,9 +940,9 @@
+ 
+     if (m_uiErozionEventTimer < uiDiff)
+     {
+-        ++m_uiErozionPhase;
++        m_uiErozionPhase++;
+         m_uiErozionEventTimer = 5000;
+-
++        debug_log("SD2: Instance Old Hillsbrad: Call m_uiErozionPhase with value %u.",m_uiErozionPhase);
+         switch(m_uiErozionPhase)
+         {
+             case 1:
+@@ -810,7 +992,7 @@
+                     if (npc_thrall_old_hillsbradAI* pThrallAI = dynamic_cast<npc_thrall_old_hillsbradAI*>(pThrall->AI()))
+                         pThrallAI->SetEscortPaused(false);
+                 }
+-
++                m_pInstance->SetData(TYPE_THRALL_EVENT, DONE);
+                 break;
+         }
+     }
+@@ -826,11 +1008,17 @@
+ bool GossipHello_npc_taretha(Player* pPlayer, Creature* pCreature)
+ {
+     instance_old_hillsbrad* pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData();
+-
+-    if (pInstance && pInstance->GetData(TYPE_THRALL_PART3) == DONE && pInstance->GetData(TYPE_THRALL_PART4) == NOT_STARTED)
++    
++    if (pInstance)
+     {
+-        pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, GOSSIP_ITEM_EPOCH1, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+-        pPlayer->SEND_GOSSIP_MENU(TEXT_ID_EPOCH1, pCreature->GetGUID());
++        if (Creature *Thrall = pInstance->GetThrall())
++        {
++            if (pInstance->GetData(TYPE_THRALL_PART3) == DONE && pInstance->GetData(TYPE_THRALL_PART4) == NOT_STARTED && Thrall->isAlive())
++            {
++                pPlayer->ADD_GOSSIP_ITEM_ID(GOSSIP_ICON_CHAT, GOSSIP_ITEM_EPOCH1, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
++                pPlayer->SEND_GOSSIP_MENU(TEXT_ID_EPOCH1, pCreature->GetGUID());
++            }
++        }
+     }
+ 
+     return true;
+@@ -839,6 +1027,9 @@
+ bool GossipSelect_npc_taretha(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
+ {
+     instance_old_hillsbrad* pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData();
++    
++    if (!pInstance || pInstance->GetData(TYPE_THRALL_PART4) != NOT_STARTED)
++        return true;
+ 
+     if (uiAction == GOSSIP_ACTION_INFO_DEF+1)
+     {
+@@ -849,23 +1040,77 @@
+     if (uiAction == GOSSIP_ACTION_INFO_DEF+2)
+     {
+         pPlayer->CLOSE_GOSSIP_MENU();
++        
++        pInstance->SetData(TYPE_THRALL_PART4, IN_PROGRESS);
++        pCreature->SummonCreature(NPC_EPOCH, 2639.13f, 698.55f, 65.43f, 4.59f,  TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 1800000);
++        debug_log("SD2: Instance Old Hillsbrad: Summon Epoch Hunter");
+ 
+-        if (pInstance && pInstance->GetData(TYPE_THRALL_EVENT) == IN_PROGRESS)
++        if (pInstance->GetThrall())
+         {
+-            pInstance->SetData(TYPE_THRALL_PART4, IN_PROGRESS);
+-            pCreature->SummonCreature(NPC_EPOCH, 2639.13f, 698.55f, 65.43f, 4.59f, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 120000);
+-
+-            if (Creature* pThrall = pInstance->GetThrall())
++            if (npc_thrall_old_hillsbradAI* pThrall = dynamic_cast<npc_thrall_old_hillsbradAI*>(pInstance->GetThrall()->AI()))
+             {
+-                if (npc_thrall_old_hillsbradAI* pThrallAI = dynamic_cast<npc_thrall_old_hillsbradAI*>(pThrall->AI()))
+-                    pThrallAI->StartWP();
++                if (Player *pPlayer = pInstance->GetPlayerInMap())
++                {
++                    if (pThrall->HasEscortState(STATE_ESCORT_ESCORTING))
++                    {
++                        pThrall->SetCheckpoint(3);
++                        debug_log("SD2: Instance Old Hillsbrad: Escort already running, continue with Checkpoint 3");
++                    }
++                    else
++                    {
++                        pThrall->Start(true, pPlayer->GetGUID(), NULL, true);
++                        pThrall->SetEscortPaused(true);
++                        pThrall->SetCheckpoint(3);
++                        debug_log("SD2: Instance Old Hillsbrad: New escort, start with Checkpoint 3");
++                    }
++                    pThrall->StartWP();
++                }
+             }
+         }
++        else
++            debug_log("SD2: Instance Old Hillsbrad: Can not find Thrall");
++
+     }
+-
+     return true;
+ }
+ 
++struct MANGOS_DLL_DECL npc_old_hillsbrad_triggerAI : public ScriptedAI
++{
++    npc_old_hillsbrad_triggerAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (instance_old_hillsbrad*)pCreature->GetInstanceData();
++        Reset();
++    }
++
++    instance_old_hillsbrad* m_pInstance;
++
++    bool m_bRelocated;
++
++    void Reset()
++    {
++        m_bRelocated = false;
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        if (!m_pInstance)
++            return;
++        
++        if (!m_bRelocated && !m_pInstance->IsRelocated())
++        {
++            m_pInstance->HandleThrallRelocation();
++            m_bRelocated = true;
++        }
++        else if (!m_bRelocated)
++            m_bRelocated = true;
++    }
++};
++
++CreatureAI* GetAI_npc_old_hillsbrad_trigger(Creature* pCreature)
++{
++    return new npc_old_hillsbrad_triggerAI(pCreature);
++}
++
+ /*######
+ ## AddSC
+ ######*/
+@@ -875,6 +1120,11 @@
+     Script* pNewScript;
+ 
+     pNewScript = new Script;
++    pNewScript->Name = "npc_old_hillsbrad_trigger";
++    pNewScript->GetAI = &GetAI_npc_old_hillsbrad_trigger;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
+     pNewScript->Name = "npc_brazen";
+     pNewScript->pGossipHello = &GossipHello_npc_brazen;
+     pNewScript->pGossipSelect = &GossipSelect_npc_brazen;
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad.h
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad.h	(revision 1920)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad.h	(working copy)
+@@ -8,6 +8,8 @@
+ enum
+ {
+     MAX_ENCOUNTER                   = 6,
++    MAX_THRALL_DEATHS               = 3,
++    MAX_FLAMES                      = 24,
+ 
+     TYPE_BARREL_DIVERSION           = 0,
+     TYPE_THRALL_EVENT               = 1,
+@@ -21,6 +23,9 @@
+     NPC_DRAKE                       = 17848,
+     NPC_LODGE_QUEST_TRIGGER         = 20155,
+     NPC_EPOCH                       = 18096,
++    NPC_TRIGGER                     = 19433,
++    GO_BARREL                       = 182589,
++    GO_FLAME                        = 182592,
+ 
+     QUEST_ENTRY_HILLSBRAD           = 10282,
+     QUEST_ENTRY_DIVERSION           = 10283,
+@@ -30,6 +35,31 @@
+     WORLD_STATE_OH                  = 2436,
+ };
+ 
++const float FlamePos[24][6] = { { 2157.28f, 234.934f, 53.8488f, 1.72788f, 0.760406f, 0.649448f },
++                                { 2178.79f, 254.287f, 53.5769f, 1.90241f, 0.814116f,-0.580703f },
++                                { 2150.41f, 249.103f, 53.8624f, 0.76794f, 0.374607f,-0.927184f },
++                                { 2211.30f, 246.804f, 55.4124f, 2.21657f, 0.894934f,-0.446198f },
++                                { 2119.77f, 42.0842f, 53.7686f, 2.67035f, 0.972370f, 0.233445f },
++                                { 2081.00f, 64.6541f, 53.9115f, 2.04204f, 0.852640f, 0.522499f },
++                                { 2064.90f, 69.6156f, 53.6659f, 1.53589f, 0.694658f, 0.719340f },
++                                { 2070.08f, 93.2598f, 54.0862f, 1.55334f, 0.700909f,-0.713250f },
++                                { 2073.39f, 142.325f, 54.4632f, 2.98451f, 0.996917f,-0.078459f },
++                                { 2055.37f, 111.925f, 54.6020f, 2.42601f, 0.936672f, 0.350207f },
++                                { 2069.83f, 106.700f, 54.6518f, 0.95993f, 0.461749f, 0.887011f },
++                                { 2086.59f, 52.8431f, 53.5683f, 1.58825f, 0.713250f, 0.700900f },
++                                { 2100.10f, 42.5693f, 53.5750f, 0.17453f, 0.087156f, 0.996195f },
++                                { 2228.10f, 251.400f, 55.5517f, 0.54105f, 0.267238f, 0.963630f },
++                                { 2199.60f, 271.738f, 53.9931f, 1.30900f, 0.608761f, 0.793353f },
++                                { 2171.96f, 262.641f, 63.3226f, 0.87266f, 0.422618f,-0.906308f },
++                                { 2176.22f, 247.951f, 53.9294f, 0.59341f, 0.292372f, 0.956305f },
++                                { 2070.19f, 80.9965f, 64.3421f, 1.09956f, 0.522499f, 0.852640f },
++                                { 2079.69f, 74.5419f, 53.7058f, 0.15708f, 0.078459f,-0.996917f },
++                                { 2069.07f, 124.392f, 54.4440f, 0.06981f, 0.034899f,-0.999391f },
++                                { 2118.76f, 51.5617f, 53.8408f, 1.43117f, 0.656059f, 0.754710f },
++                                { 2100.35f, 59.5064f, 53.4081f, 0.20944f, 0.104528f,-0.994522f },
++                                { 2202.69f, 256.725f, 62.7723f, 1.88496f, 0.809017f,-0.587785f },
++                                { 2195.58f, 257.778f, 54.0599f, 2.25148f, 0.902585f,-0.430511f }, };
++
+ class MANGOS_DLL_DECL instance_old_hillsbrad : public ScriptedInstance
+ {
+     public:
+@@ -42,6 +72,7 @@
+ 
+         void OnCreatureCreate(Creature* pCreature);
+         void OnCreatureDeath(Creature* pCreature);
++        void OnObjectCreate(GameObject* pObject);
+ 
+         void SetData(uint32 uiType, uint32 uiData);
+         uint32 GetData(uint32 uiType);
+@@ -51,13 +82,21 @@
+ 
+         void UpdateLodgeQuestCredit();
+ 
++        bool IsRegularMode() { return m_bIsRegularMode; }
++
++        void SetFlameSpawnState(bool Spawn, Unit *pUnit = NULL);
++
++        bool IsRelocated() { return h_bRelocated; }
++
+         Creature* GetThrall() { return instance->GetCreature(m_uiThrallGUID); }
+         Creature* GetTaretha() { return instance->GetCreature(m_uiTarethaGUID); }
+         Creature* GetScarloc() { return instance->GetCreature(m_uiScarlocGUID); }
+         Creature* GetEpoch() { return instance->GetCreature(m_uiEpochGUID); }
++        Creature* GetDrake() { return instance->GetCreature(m_uiDrakeGUID); }
+ 
+     protected:
+         uint32 m_auiEncounter[MAX_ENCOUNTER];
++        std::string strSaveData;
+ 
+         uint32 m_uiBarrelCount;
+         uint32 m_uiThrallEventCount;
+@@ -65,6 +104,17 @@
+         uint64 m_uiTarethaGUID;
+         uint64 m_uiScarlocGUID;
+         uint64 m_uiEpochGUID;
++        uint64 m_uiDrakeGUID;
++        uint64 m_uiTriggerGUID;
++        std::list<uint64> m_uilBarrelGUID;
++        std::list<uint64> m_uilFlameGUID;
++
++        bool m_bIsRegularMode;
++        bool h_bRelocated;
++
++        void Load(const char* chrIn);
++        const char* Save();
++        void SaveData();
+ };
+ 
+ #endif
+
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad_mangos.sql
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad_mangos.sql	(revision 0)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad_mangos.sql	(revision 0)
+@@ -0,0 +1,58 @@
++UPDATE `creature_template` SET `ScriptName` = 'add_durnhold_warden', `heroic_entry` = '20530' WHERE `creature_template`.`entry` = 17833;
++UPDATE `creature_template` SET `ScriptName` = 'add_durnhold_warden' WHERE `creature_template`.`entry` = 20530;
++UPDATE `creature_template` SET `ScriptName` = 'add_durnhold_veteran', `heroic_entry` = '20529' WHERE `creature_template`.`entry` = 17860;
++UPDATE `creature_template` SET `ScriptName` = 'add_durnhold_veteran' WHERE `creature_template`.`entry` = 20529; 
++UPDATE `creature_template` SET `faction_A` = '168', `faction_H` = '168' WHERE `creature_template`.`entry` = 18172;
++UPDATE `creature_template` SET `faction_A` = '168', `faction_H` = '168' WHERE `creature_template`.`entry` = 20533;
++UPDATE `creature_template` SET `faction_A` = '168', `faction_H` = '168' WHERE `creature_template`.`entry` = 18170;
++UPDATE `creature_template` SET `faction_A` = '168', `faction_H` = '168' WHERE `creature_template`.`entry` = 20534;
++UPDATE `creature_template` SET `faction_A` = '168', `faction_H` = '168' WHERE `creature_template`.`entry` = 18171;
++UPDATE `creature_template` SET `faction_A` = '168', `faction_H` = '168' WHERE `creature_template`.`entry` = 20532;
++UPDATE `creature_template` SET `heroic_entry` = '20533' WHERE `creature_template`.`entry` =18172;
++UPDATE `creature_template` SET `heroic_entry` = '20532' WHERE `creature_template`.`entry` =18171;
++UPDATE `creature_template` SET `heroic_entry` = '20534' WHERE `creature_template`.`entry` =18170;
++UPDATE `creature_template` SET `faction_A` = '168',`faction_H` = '168' WHERE `creature_template`.`entry` =18092;
++UPDATE `creature_template` SET `faction_A` = '168',`faction_H` = '168' WHERE `creature_template`.`entry` =20545;
++UPDATE `creature_template` SET `faction_A` = '168',`faction_H` = '168' WHERE `creature_template`.`entry` =18093;
++UPDATE `creature_template` SET `faction_A` = '168',`faction_H` = '168' WHERE `creature_template`.`entry` =20547;
++UPDATE `creature_template` SET `faction_A` = '168',`faction_H` = '168' WHERE `creature_template`.`entry` =18094;
++UPDATE `creature_template` SET `faction_A` = '168',`faction_H` = '168' WHERE `creature_template`.`entry` =20546;
++INSERT INTO `creature` (`guid` ,`id` ,`map` ,`spawnMask` ,`modelid` ,`equipment_id` ,`position_x` ,`position_y` ,`position_z` ,`orientation` ,`spawntimesecs` ,`spawndist` ,`currentwaypoint` ,`curhealth` ,`curmana` ,`DeathState` ,`MovementType`)
++VALUES (NULL , '19433', '560', '3', '0', '0', '2660.57', '659.173', '61.9370', '0', '120', '5', '0', '1', '0', '0', '0'), (NULL , '19433', '560', '3', '0', '0', '2486.91', '626.356', '58.0761', '0', '120', '5', '0', '1', '0', '0', '0'), 
++(NULL , '19433', '560', '3', '0', '0', '2231.89', '119.956', '82.2979', '0', '120', '5', '0', '1', '0', '0', '0'), (NULL , '19433', '560', '3', '0', '0', '2055.4', '242.9', '63.3418', '0', '120', '5', '0', '1', '0', '0', '0');
++DELETE FROM `creature` where `guid`='83989';
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30287;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30288;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30289;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30290;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30291;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30292;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30293;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30294;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30295;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30296;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30297;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30298;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30299;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30300;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30301;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30302;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30303;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30304;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30305;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30306;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30307;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30308;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30309;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30310;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 34868;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30286;
++DELETE FROM `gameobject` WHERE `gameobject`.`guid` = 30263;
++UPDATE `creature_template` SET `heroic_entry` = '20523',`faction_A` = '1747',`faction_H` = '1747' WHERE `creature_template`.`entry` =18764;
++UPDATE `creature_template` SET `faction_A` = '1747',`faction_H` = '1747' WHERE `creature_template`.`entry` =20523;
++UPDATE  `creature_template`  SET  `ScriptName`  =  'npc_old_hillsbrad_trigger' WHERE  `creature_template`.`entry`  =19433;
++UPDATE `creature_template` SET `heroic_entry` = '20535',`MovementType` = '0' WHERE `creature_template`.`entry` =17848;
++UPDATE `creature_template` SET `MovementType` = '0' WHERE `creature_template`.`entry` =20535;
++UPDATE `creature_template` SET `MovementType` = '0' WHERE `creature_template`.`entry` =17876;
++UPDATE `creature_template` SET `unit_flags` = '33554432' WHERE `creature_template`.`entry` =19433;
++UPDATE `gameobject_template` SET `data2`='0', `data3`='0' WHERE `entry`='182589';
+Index: scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad_sd2.sql
+===================================================================
+--- scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad_sd2.sql	(revision 0)
++++ scripts/kalimdor/caverns_of_time/old_hillsbrad/old_hillsbrad_sd2.sql	(revision 0)
+@@ -0,0 +1,22 @@
++INSERT INTO `script_waypoint` (
++`entry` ,`pointid` ,`location_x` ,`location_y` ,`location_z` ,`waittime` ,`point_comment` )
++VALUES
++('17848', '0', '2207.14', '130.484', '87.9561', '0', 'start'),
++('17848', '1', '2176.42', '147.304', '88.2166', '0', NULL),
++('17848', '2', '2167.54', '143.705', '86.7136', '0', NULL),
++('17848', '3', '2147.27', '124.421', '76.525', '0', NULL),
++('17848', '4', '2149.54', '101.402', '72.6357', '0', NULL),
++('17848', '5', '2149.07', '77.3958', '66.9327', '0', NULL),
++('17848', '6', '2137.72', '70.627', '64.9963', '0', NULL),
++('17848', '7', '2128.38', '71.206', '64.4165', '3000', 'look around'),
++('17848', '8', '2125.85', '88.0168', '54.8763', '0', NULL),
++('17848', '9', '2119.88', '102.613', '52.441', '0', 'start patrole'),
++('17848', '10', '2108.86', '114.574', '52.9755', '0', NULL),
++('17848', '11', '2096.16', '121.273', '52.4426', '0', NULL),
++('17848', '12', '2086.15', '118.237', '52.7185', '0', NULL),
++('17848', '13', '2082.25', '104.244', '52.8557', '0', NULL),
++('17848', '14', '2091.59', '82.9295', '52.4648', '0', NULL),
++('17848', '15', '2113.02', '67.1143', '52.4982', '0', 'end patrole');
++
++UPDATE `script_waypoint` SET `waittime` = '5000' WHERE `script_waypoint`.`entry` =17876 AND `script_waypoint`.`pointid` =97;
++insert into `custom_texts` ( `content_default`, `content_loc3`, `comment`, `entry`) values ( 'Yes, we are ready.', 'Ja, wir sind bereit.', 'Thrall - Start Event', '-2500007');

@@ -1,0 +1,2 @@
+UPDATE `creature_loot_template` SET  `ChanceOrQuestChance` =  '-100' WHERE  `creature_loot_template`.`entry` =21287 AND  `creature_loot_template`.`item` =30689;
+UPDATE `locales_quest` SET  `Title_loc3` =  'Nieder mit dem Kriegshetzer!' WHERE  `locales_quest`.`entry` =10603;

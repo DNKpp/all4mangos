@@ -1,0 +1,32 @@
+diff --git a/src/game/CreatureAI.h b/src/game/CreatureAI.h
+index 60b619c..141ba27 100644
+--- a/src/game/CreatureAI.h
++++ b/src/game/CreatureAI.h
+@@ -101,6 +101,9 @@ class MANGOS_DLL_SPEC CreatureAI
+         // Called when the creature kills a unit
+         virtual void KilledUnit(Unit *) {}
+ 
++		// Called when its owner kills a unit
++		virtual void OwnerKilledUnit(Unit* /*pVictim*/) {}
++
+         // Called when the creature summon successfully other creature
+         virtual void JustSummoned(Creature* ) {}
+ 
+diff --git a/src/game/Unit.cpp b/src/game/Unit.cpp
+index 4ce0ade..d43c622 100644
+--- a/src/game/Unit.cpp
++++ b/src/game/Unit.cpp
+@@ -785,6 +785,13 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
+         // Call KilledUnit for creatures
+         if (GetTypeId() == TYPEID_UNIT && ((Creature*)this)->AI())
+             ((Creature*)this)->AI()->KilledUnit(pVictim);
++		// Call OwnerKilledUnit for MiniPets
++		else if(GetTypeId() == TYPEID_PLAYER)
++		{
++			Player *pPlayer = dynamic_cast<Player*>(this);
++			if (pPlayer && pPlayer->GetMiniPet())
++				pPlayer->GetMiniPet()->AI()->OwnerKilledUnit(pVictim);
++		}
+ 
+         // 10% durability loss on death
+         // clean InHateListOf

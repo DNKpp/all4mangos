@@ -1,0 +1,243 @@
+Index: scripts/outland/nagrand.cpp
+===================================================================
+--- scripts/outland/nagrand.cpp	(revision 1958)
++++ scripts/outland/nagrand.cpp	(working copy)
+@@ -698,6 +698,223 @@
+ }
+ 
+ /*######
++## mobs, items and event for quest Body of Evidence(9932)
++######*/
++enum
++{
++	NPC_BOULDERFIST_SABOUTEUR	= 18396,
++	NPC_KILSORROW_INVADER		= 18397,
++	WARMAUL_PYRE_CREDIT_MARKER	= 18395,
++
++	SPELL_SPEAR_THROW_SABOTEUR	= 32248,
++	QUEST_BODY_OF_EVIDENCE		= 9932,
++
++	SAY_SABOTEUR1_START			= -2500400,
++	SAY_SABOTEUR1_WALK			= -2500401,
++	SAY_SABOTEUR1_END			= -2500403,
++	SAY_SABOTEUR2_WALK			= -2500402,
++	SAY_SABOTEUR2_END			= -2500404,
++};
++
++#define XSPAWN_1	-884.136f
++#define YSPAWN_1	7708.95f
++#define ZSPAWN_1	35.9263f
++#define OSPAWN_1	1.67532f
++
++#define XSPAWN_2	-886.125f
++#define YSPAWN_2	7714.71f
++#define ZSPAWN_2	35.4125f
++#define OSPAWN_2	5.21747f
++
++struct MANGOS_DLL_DECL npc_boulderfist_saboteurAI : public npc_escortAI
++{
++    npc_boulderfist_saboteurAI(Creature* pCreature) : npc_escortAI(pCreature) 
++	{ 
++		m_uiPlayerGUID = NULL;
++		m_uiSaboteurGUID = NULL;
++		Reset();
++	}
++
++	uint32 m_SpearThrow_Timer;
++	uint32 m_uiEvent_Timer;
++	uint8 m_uiEventCounter;
++
++	uint64 m_uiPlayerGUID;
++	uint64 m_uiSaboteurGUID;
++
++    void Reset()
++	{
++		m_SpearThrow_Timer = urand(1000, 3000);
++		m_uiEvent_Timer = 3000;
++		m_uiEventCounter = 0;
++		m_creature->setFaction(FACTION_ESCORT_N_NEUTRAL_ACTIVE);
++	}
++
++	void CheckQuestFail()
++	{
++		if (m_uiPlayerGUID)
++		{
++			Player *pPlayer = m_creature->GetMap()->GetPlayer(m_uiPlayerGUID);
++			if (pPlayer)
++			{
++				if (IsSaboteurAlive())
++				{
++					Creature *pSaboteur = m_creature->GetMap()->GetCreature(m_uiSaboteurGUID);
++					pSaboteur->ForcedDespawn();
++				}
++
++				if (pPlayer->GetQuestStatus(QUEST_BODY_OF_EVIDENCE) == QUEST_STATUS_INCOMPLETE)
++				{
++					pPlayer->FailQuest(QUEST_BODY_OF_EVIDENCE);
++				}
++			}
++		}
++	}
++
++	void JustDied(Unit *pWho)
++	{
++		CheckQuestFail();
++	}
++
++	void GetImportantGUID(Player *pPlayer, Creature *pSaboteur)
++	{
++		m_uiPlayerGUID = pPlayer->GetGUID();
++		m_uiSaboteurGUID = pSaboteur->GetGUID();
++	}
++
++	bool IsSaboteurAlive()
++	{
++		Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiSaboteurGUID);
++		if (pCreature && pCreature->isAlive())
++			return true;
++		else
++			return false;
++	}
++
++	void UpdateEscortAI(const uint32 uiDiff)
++	{
++		if (m_uiPlayerGUID && m_uiEventCounter < 2 && !m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IN_COMBAT) && m_creature->isAlive())
++		{
++			if (m_uiEvent_Timer <= uiDiff)
++			{
++				switch(m_uiEventCounter)
++				{
++				case 0:
++					m_creature->MonsterSay(SAY_SABOTEUR1_START, 0);
++					m_uiEvent_Timer = 3000;
++					Start(true, m_uiPlayerGUID);
++					SetEscortPaused(true);
++					break;
++				case 1:
++					SetEscortPaused(false);
++					npc_boulderfist_saboteurAI *pSaboteur = dynamic_cast<npc_boulderfist_saboteurAI*>(m_creature->GetMap()->GetCreature(m_uiSaboteurGUID)->AI());
++					if (m_creature->GetMap()->GetCreature(m_uiSaboteurGUID)->isAlive())
++					{
++						pSaboteur->Start(true, m_uiPlayerGUID);
++						pSaboteur->SetEscortPaused(true);
++						pSaboteur->SetCurrentWaypoint(12);
++						pSaboteur->SetEscortPaused(false);
++					}
++					break;
++				}
++				m_uiEventCounter++;
++			}
++			else
++				m_uiEvent_Timer -= uiDiff;
++		}
++		
++		//check if second saboteur is alive, if not, despawn and set quest "failed"
++		if (m_uiSaboteurGUID)
++		{
++			if (!IsSaboteurAlive())
++			{
++				CheckQuestFail();
++				m_creature->ForcedDespawn();
++			}
++		}
++
++		// Return since we have no target
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++		if (m_SpearThrow_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_SPEAR_THROW_SABOTEUR);
++			m_SpearThrow_Timer = urand(1000, 3000);
++		}
++		else
++			m_SpearThrow_Timer -=uiDiff;
++
++		DoMeleeAttackIfReady();
++	 }
++
++	 void WaypointReached(uint32 uiPointID)
++	 {
++		 Player *pPlayer = m_creature->GetMap()->GetPlayer(m_uiPlayerGUID);
++		 switch(uiPointID)
++		 {
++			 case 3:
++				SetRun(false);
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 70000);
++				break;
++			 case 5:
++				m_creature->MonsterSay(SAY_SABOTEUR1_WALK, 0);
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 60000);
++				break;
++			 case 6:
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 50000);
++				break;
++			 case 8:
++				m_creature->MonsterSay(SAY_SABOTEUR1_END, 0);
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 40000);
++				SetRun(true);
++				break;
++			 case 10:
++				 if (pPlayer && pPlayer->GetQuestStatus(QUEST_BODY_OF_EVIDENCE) == QUEST_STATUS_INCOMPLETE)
++					pPlayer->KilledMonsterCredit(WARMAUL_PYRE_CREDIT_MARKER);
++				 break;
++			 case 11: //Sabotuer1 end
++				SetEscortPaused(true);
++				m_creature->ForcedDespawn();
++				break;
++			 case 12: //Sabotuer2 start
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 70000);
++				SetRun(false);
++				break;
++			 case 14:
++				m_creature->MonsterSay(SAY_SABOTEUR2_WALK, 0);
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 65000);
++				break;
++			 case 15:
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 50000);
++				break;
++			 case 16:
++				m_creature->SummonCreature(NPC_KILSORROW_INVADER, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ(), m_creature->GetOrientation(), TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 40000);
++				break;
++			 case 17:
++				m_creature->MonsterSay(SAY_SABOTEUR2_END, 0);
++				SetRun(true);
++				break;
++		 }
++	 }
++};
++
++CreatureAI* GetAI_npc_boulderfist_saboteur(Creature* pCreature)
++{
++    return new npc_boulderfist_saboteurAI(pCreature);
++}
++
++
++bool GO_Use_go_blazing_warmaul_pyre(Player *pPlayer, GameObject *pGO)
++{
++	if (pPlayer->GetQuestStatus(QUEST_BODY_OF_EVIDENCE) != QUEST_STATUS_INCOMPLETE)
++		return false;
++	npc_boulderfist_saboteurAI *pSaboteur1 = dynamic_cast<npc_boulderfist_saboteurAI*>(pPlayer->SummonCreature(NPC_BOULDERFIST_SABOUTEUR, XSPAWN_1, YSPAWN_1, ZSPAWN_1, OSPAWN_1, TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 300000)->AI());
++	pSaboteur1->GetImportantGUID(pPlayer, pPlayer->SummonCreature(NPC_BOULDERFIST_SABOUTEUR, XSPAWN_2, YSPAWN_2, ZSPAWN_2, OSPAWN_2, TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 300000));
++	return false;
++}
++
++/*######
+ ## AddSC
+ ######*/
+ 
+@@ -751,4 +968,14 @@
+     pNewScript->Name = "npc_creditmarker_visit_with_ancestors";
+     pNewScript->GetAI = &GetAI_npc_creditmarker_visit_with_ancestors;
+     pNewScript->RegisterSelf();
++
++	pNewScript = new Script;
++    pNewScript->Name = "npc_boulderfist_saboteur";
++    pNewScript->GetAI = &GetAI_npc_boulderfist_saboteur;
++    pNewScript->RegisterSelf();
++
++	pNewScript = new Script;
++    pNewScript->Name = "go_blazing_warmaul_pyre";
++	pNewScript->pGOUse = &GO_Use_go_blazing_warmaul_pyre;
++    pNewScript->RegisterSelf();
+ }

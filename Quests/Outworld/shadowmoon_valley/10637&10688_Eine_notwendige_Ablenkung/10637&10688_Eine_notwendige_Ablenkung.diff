@@ -1,0 +1,126 @@
+Index: scripts/outland/shadowmoon_valley.cpp
+===================================================================
+--- scripts/outland/shadowmoon_valley.cpp	(revision 1958)
++++ scripts/outland/shadowmoon_valley.cpp	(working copy)
+@@ -1440,6 +1440,111 @@
+     return true;
+ }
+ 
++/*#####
++# npc_azaloth
++######*/
++enum
++{
++	SPELL_BANISH			= 37833,
++	SPELL_UNBANISH_AZALOTH	= 37834,
++	SPELL_RAIN_OF_FIRE		= 38741,
++	SPELL_WAR_STOMP			= 38750,
++	SPELL_CLEAVE_AZALOTH	= 40504,
++	SPELL_CRIPPLE			= 11443,
++
++	NPC_AZALOTH_TRIGGER		= 21892,
++
++	FACTION_SUNFURY			= 1826,
++	FACTION_AZALOTH			= 954,
++};
++
++struct MANGOS_DLL_DECL npc_azalothAI : public ScriptedAI
++{
++    npc_azalothAI(Creature* pCreature) : ScriptedAI(pCreature)
++	{
++		Reset();
++	}
++
++	uint32 RainOfFire_Timer;
++	uint32 WarStomp_Timer;
++	uint32 Cleave_Timer;
++	uint32 Cripple_Timer;
++	uint32 Banish_Timer;
++
++    void Reset()
++    {
++		m_creature->setFaction(FACTION_SUNFURY);
++		DoCast(m_creature, SPELL_BANISH);
++
++		RainOfFire_Timer	= urand(5000, 12000);
++		WarStomp_Timer		= urand(3000, 8000);
++		Cleave_Timer		= urand(3000, 5000);
++		Cripple_Timer		= urand(8000, 15000);
++		Banish_Timer		= 3000;
++    }
++	
++	void SpellHit(Unit *pUnit, const SpellEntry *pSpell)
++	{
++		if (pSpell->Id == SPELL_UNBANISH_AZALOTH)
++		{
++			m_creature->RemoveAllAuras();
++			m_creature->setFaction(FACTION_AZALOTH);
++			m_creature->AddThreat(pUnit);
++		}
++	}
++
++	void JustReachedHome()
++	{
++		Reset();
++	}
++
++	void UpdateAI(const uint32 uiDiff)
++	{
++		// Return since we have no target
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++		if (RainOfFire_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_RAIN_OF_FIRE);
++			RainOfFire_Timer = urand(25000, 45000);
++		}
++		else
++			RainOfFire_Timer -= uiDiff;
++
++		if (WarStomp_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_WAR_STOMP);
++			WarStomp_Timer = urand(15000, 25000);
++		}
++		else
++			WarStomp_Timer -= uiDiff;
++
++		if (Cleave_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE_AZALOTH);
++			Cleave_Timer = urand(5000, 10000);
++		}
++		else
++			Cleave_Timer -= uiDiff;
++
++		if (Cripple_Timer <= uiDiff)
++		{
++			DoCastSpellIfCan(m_creature->getVictim(), SPELL_CRIPPLE);
++			Cripple_Timer = urand(12000, 20000);
++		}
++		else
++			Cripple_Timer -= uiDiff;
++
++		DoMeleeAttackIfReady();
++	}
++};
++
++CreatureAI* GetAI_npc_azaloth(Creature* (pCreature))
++{
++    return new npc_azalothAI(pCreature);
++}
++
+ void AddSC_shadowmoon_valley()
+ {
+     Script *newscript;
+@@ -1521,4 +1626,9 @@
+     newscript->Name = "go_crystal_prison";
+     newscript->pQuestAcceptGO = &GOQuestAccept_GO_crystal_prison;
+     newscript->RegisterSelf();
++
++	newscript = new Script;
++    newscript->Name = "npc_azaloth";
++    newscript->GetAI = &GetAI_npc_azaloth;
++    newscript->RegisterSelf();
+ }

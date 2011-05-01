@@ -1,0 +1,2 @@
+UPDATE `creature_template` SET  `ScriptName` =  'npc_fel_guard_hound' WHERE  `creature_template`.`entry` =21847;
+UPDATE `gameobject_loot_template` SET  `ChanceOrQuestChance` =  '-40' WHERE  `gameobject_loot_template`.`entry` =21311 AND  `gameobject_loot_template`.`item` =30794;

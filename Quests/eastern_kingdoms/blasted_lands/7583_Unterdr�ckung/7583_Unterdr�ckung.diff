@@ -1,0 +1,15 @@
+diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
+index 2ea4a23..24b644f 100644
+--- a/src/game/SpellEffects.cpp
++++ b/src/game/SpellEffects.cpp
+@@ -793,8 +793,8 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
+ 
+                     pGameObj->SetRespawnTime(creatureTarget->GetRespawnTime()-time(NULL));
+                     pGameObj->SetOwnerGUID(m_caster->GetGUID() );
+-                    pGameObj->SetUInt32Value(GAMEOBJECT_LEVEL, m_caster->getLevel() );
+-                    pGameObj->SetSpellId(m_spellInfo->Id);
++                    /*pGameObj->SetUInt32Value(GAMEOBJECT_LEVEL, m_caster->getLevel() );
++                    pGameObj->SetSpellId(m_spellInfo->Id);*/
+ 
+                     creatureTarget->ForcedDespawn();
+ 

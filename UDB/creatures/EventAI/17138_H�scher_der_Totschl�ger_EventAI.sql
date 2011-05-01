@@ -1,0 +1,2 @@
+UPDATE `creature_template` SET  `AIName` =  'EventAI' WHERE  `creature_template`.`entry` =17138;
+INSERT INTO `creature_ai_scripts` VALUES (1713802, 17138, 0, 0, 100, 1, 1000, 5000, 3000, 8000, 11, 15496, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'CAST CLEAVE');

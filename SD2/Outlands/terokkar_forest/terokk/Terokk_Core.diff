@@ -1,0 +1,137 @@
+diff --git a/src/game/SpellAuraDefines.h b/src/game/SpellAuraDefines.h
+index 9877261..f70d784 100644
+--- a/src/game/SpellAuraDefines.h
++++ b/src/game/SpellAuraDefines.h
+@@ -251,7 +251,7 @@ enum AuraType
+     SPELL_AURA_HASTE_RANGED = 218,
+     SPELL_AURA_MOD_MANA_REGEN_FROM_STAT = 219,
+     SPELL_AURA_MOD_RATING_FROM_STAT = 220,
+-    SPELL_AURA_221 = 221,
++    SPELL_AURA_MOD_DETAUNT = 221,
+     SPELL_AURA_222 = 222,
+     SPELL_AURA_223 = 223,
+     SPELL_AURA_224 = 224,
+diff --git a/src/game/SpellAuras.cpp b/src/game/SpellAuras.cpp
+index 4d2351a..c39417e 100644
+--- a/src/game/SpellAuras.cpp
++++ b/src/game/SpellAuras.cpp
+@@ -270,7 +270,7 @@ pAuraHandler AuraHandler[TOTAL_AURAS]=
+     &Aura::HandleAuraModRangedHaste,                        //218 SPELL_AURA_HASTE_RANGED
+     &Aura::HandleModManaRegen,                              //219 SPELL_AURA_MOD_MANA_REGEN_FROM_STAT
+     &Aura::HandleUnused,                                    //220 SPELL_AURA_MOD_RATING_FROM_STAT
+-    &Aura::HandleNULL,                                      //221 ignored
++    &Aura::HandleModDetaunt,                                //221 SPELL_AURA_MOD_DETAUNT
+     &Aura::HandleUnused,                                    //222 unused
+     &Aura::HandleNULL,                                      //223 Cold Stare
+     &Aura::HandleUnused,                                    //224 unused
+@@ -5015,6 +5015,20 @@ void Aura::HandleModManaRegen(bool /*apply*/, bool Real)
+     ((Player*)m_target)->UpdateManaRegen();
+ }
+ 
++void Aura::HandleModDetaunt(bool apply, bool Real)
++{
++    if (!Real)
++        return;
++
++    Unit* pCaster = GetCaster();
++    if (!pCaster || !pCaster->isAlive() || !pCaster->CanHaveThreatList())
++       return;
++    if (!m_target->isAlive())
++        return;
++
++    pCaster->Detaunt(m_target, apply);
++}
++
+ void Aura::HandleComprehendLanguage(bool apply, bool /*Real*/)
+ {
+     if(apply)
+diff --git a/src/game/SpellAuras.h b/src/game/SpellAuras.h
+index c89b6ea..c53f1ac 100644
+--- a/src/game/SpellAuras.h
++++ b/src/game/SpellAuras.h
+@@ -189,6 +189,7 @@ class MANGOS_DLL_SPEC Aura
+         void HandleAuraModRangedAttackPowerOfStatPercent(bool apply, bool Real);
+         void HandleSpiritOfRedemption(bool apply, bool Real);
+         void HandleModManaRegen(bool apply, bool Real);
++		void HandleModDetaunt(bool apply, bool Real);
+         void HandleComprehendLanguage(bool apply, bool Real);
+         void HandleShieldBlockValue(bool apply, bool Real);
+         void HandleModSpellCritChanceShool(bool apply, bool Real);
+diff --git a/src/game/ThreatManager.cpp b/src/game/ThreatManager.cpp
+index bfb51e6..6832f9b 100644
+--- a/src/game/ThreatManager.cpp
++++ b/src/game/ThreatManager.cpp
+@@ -481,6 +481,25 @@ void ThreatManager::tauntFadeOut(Unit *pTaunter)
+ 
+ //============================================================
+ 
++void ThreatManager::Detaunt(Unit* pVictim, bool bApply)
++{
++    if (bApply)
++    {
++        if (HostileReference* ref = iThreatContainer.getReferenceByTarget(pVictim))
++       {
++            // Ok, temp threat is unused
++            if (ref->getTempThreatModifyer() == 0.0f)
++            {
++                ref->setTempThreat(0.0f);
++           }
++        }
++    }
++   else
++        tauntFadeOut(pVictim);
++}
++
++//============================================================
++
+ void ThreatManager::setCurrentVictim(HostileReference* pHostileReference)
+ {
+     iCurrentVictim = pHostileReference;
+diff --git a/src/game/ThreatManager.h b/src/game/ThreatManager.h
+index 7f8538c..7042a60 100644
+--- a/src/game/ThreatManager.h
++++ b/src/game/ThreatManager.h
+@@ -201,6 +201,7 @@ class MANGOS_DLL_SPEC ThreatManager
+ 
+         void tauntApply(Unit* pTaunter);
+         void tauntFadeOut(Unit *pTaunter);
++		void Detaunt(Unit* pVictim, bool bApply);
+ 
+         void setCurrentVictim(HostileReference* pHostileReference);
+ 
+diff --git a/src/game/Unit.cpp b/src/game/Unit.cpp
+index 4ce0ade..4d1691f 100644
+--- a/src/game/Unit.cpp
++++ b/src/game/Unit.cpp
+@@ -9421,6 +9421,19 @@ void Unit::TauntFadeOut(Unit *taunter)
+ 
+ //======================================================================
+ 
++void Unit::Detaunt(Unit* pVictim, bool bApply)
++{
++    if (!pVictim)
++        return;
++
++    if (!CanHaveThreatList())
++       return;
++
++    m_ThreatManager.Detaunt(pVictim, bApply);
++}
++
++//======================================================================
++
+ bool Unit::SelectHostileTarget()
+ {
+     //function provides main threat functionality
+diff --git a/src/game/Unit.h b/src/game/Unit.h
+index 07111e4..2f0da9e 100644
+--- a/src/game/Unit.h
++++ b/src/game/Unit.h
+@@ -1579,6 +1579,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
+         bool SelectHostileTarget();
+         void TauntApply(Unit* pVictim);
+         void TauntFadeOut(Unit *taunter);
++		void Detaunt(Unit* pVictim, bool bApply);
+         ThreatManager& getThreatManager() { return m_ThreatManager; }
+         ThreatManager const& getThreatManager() const { return m_ThreatManager; }
+         void addHatedBy(HostileReference* pHostileReference) { m_HostileRefManager.insertFirst(pHostileReference); };

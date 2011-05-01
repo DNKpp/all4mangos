@@ -1,0 +1,64 @@
+Index: scripts/outland/hellfire_peninsula.cpp
+===================================================================
+--- scripts/outland/hellfire_peninsula.cpp	(revision 1958)
++++ scripts/outland/hellfire_peninsula.cpp	(working copy)
+@@ -37,6 +37,7 @@
+ 
+ #include "precompiled.h"
+ #include "escort_ai.h"
++#include "pet_ai.h"
+ 
+ /*######
+ ## npc_aeranas
+@@ -743,6 +744,41 @@
+     return true;
+ }
+ 
++/*######
++## npc_fel_guard_hound
++######*/
++
++enum
++{
++	SPELL_CREATE_POODAD = 37688,
++	NPC_DERANGED_HELBOAR= 16863,
++};
++
++struct MANGOS_DLL_DECL npc_fel_guard_houndAI : public ScriptedPetAI
++{
++    npc_fel_guard_houndAI(Creature* pCreature) : ScriptedPetAI(pCreature) { Reset(); }
++
++    void Reset() { }
++
++    void OwnerKilledUnit(Unit* pVictim)
++    {
++        if (pVictim->GetTypeId() == TYPEID_UNIT && pVictim->GetEntry() == NPC_DERANGED_HELBOAR)
++		{
++            // Distance expected?
++            if (m_creature->IsWithinDistInMap(pVictim, 10.0f))
++            {
++			    if (urand(1, 100) <= 35)
++				    DoCastSpellIfCan(m_creature, SPELL_CREATE_POODAD);
++            }
++		}
++    }
++};
++
++CreatureAI* GetAI_npc_fel_guard_hound(Creature* pCreature)
++{
++    return new npc_fel_guard_houndAI(pCreature);
++}
++
+ void AddSC_hellfire_peninsula()
+ {
+     Script *newscript;
+@@ -810,4 +846,9 @@
+     newscript->GetAI = &GetAI_npc_wounded_blood_elf;
+     newscript->pQuestAcceptNPC = &QuestAccept_npc_wounded_blood_elf;
+     newscript->RegisterSelf();
++
++	newscript = new Script;
++    newscript->Name = "npc_fel_guard_hound";
++    newscript->GetAI = &GetAI_npc_fel_guard_hound;
++    newscript->RegisterSelf();
+ }

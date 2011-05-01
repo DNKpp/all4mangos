@@ -1,0 +1,81 @@
+diff --git a/scripts/eastern_kingdoms/molten_core/instance_molten_core.cpp b/scripts/eastern_kingdoms/molten_core/instance_molten_core.cpp
+index 363191f..ab06e17 100644
+--- a/scripts/eastern_kingdoms/molten_core/instance_molten_core.cpp
++++ b/scripts/eastern_kingdoms/molten_core/instance_molten_core.cpp
+@@ -28,7 +28,6 @@ instance_molten_core::instance_molten_core(Map* pMap) : ScriptedInstance(pMap),
+     m_uiGarrGUID(0),
+     m_uiSulfuronGUID(0),
+     m_uiMajordomoGUID(0),
+-    m_uiRagnarosGUID(0),
+     m_uiRuneKoroGUID(0),
+     m_uiRuneZethGUID(0),
+     m_uiRuneMazjGUID(0),
+@@ -36,6 +35,8 @@ instance_molten_core::instance_molten_core(Map* pMap) : ScriptedInstance(pMap),
+     m_uiRuneBlazGUID(0),
+     m_uiRuneKressGUID(0),
+     m_uiRuneMohnGUID(0),
++    m_uiLavaSteamGUID(0),
++    m_uiLavaSplashGUID(0),
+     m_uiFirelordCacheGUID(0)
+ {
+     Initialize();
+@@ -71,7 +72,6 @@ void instance_molten_core::OnCreatureCreate(Creature* pCreature)
+         case NPC_GARR:      m_uiGarrGUID = pCreature->GetGUID();        break;
+         case NPC_SULFURON:  m_uiSulfuronGUID = pCreature->GetGUID();    break;
+         case NPC_MAJORDOMO: m_uiMajordomoGUID = pCreature->GetGUID();   break;
+-        case NPC_RAGNAROS:  m_uiRagnarosGUID = pCreature->GetGUID();    break;
+ 
+         // Push adds to lists in order to handle respawn
+         case NPC_FLAMEWAKER_PROTECTOR:  m_luiProtectorGUIDs.push_back(pCreature->GetGUID());    break;
+@@ -97,6 +97,9 @@ void instance_molten_core::OnObjectCreate(GameObject* pGo)
+ 
+         // Majordomo event chest
+         case GO_CACHE_OF_THE_FIRE_LORD: m_uiFirelordCacheGUID = pGo->GetGUID(); break;
++        // Ragnaros GOs
++        case GO_LAVA_STEAM:             m_uiLavaSteamGUID = pGo->GetGUID();     break;
++        case GO_LAVA_SPLASH:            m_uiLavaSplashGUID = pGo->GetGUID();    break;
+     }
+ }
+ 
+@@ -274,7 +277,9 @@ uint64 instance_molten_core::GetData64(uint32 uiData)
+         case NPC_GARR:      return m_uiGarrGUID;
+         case NPC_SULFURON:  return m_uiSulfuronGUID;
+         case NPC_MAJORDOMO: return m_uiMajordomoGUID;
+-        case NPC_RAGNAROS:  return m_uiRagnarosGUID;
++
++        case GO_LAVA_STEAM:  return m_uiLavaSteamGUID;
++        case GO_LAVA_SPLASH: return m_uiLavaSplashGUID;
+ 
+         default:
+             return 0;
+diff --git a/scripts/eastern_kingdoms/molten_core/molten_core.h b/scripts/eastern_kingdoms/molten_core/molten_core.h
+index a4895db..cb4c11c 100644
+--- a/scripts/eastern_kingdoms/molten_core/molten_core.h
++++ b/scripts/eastern_kingdoms/molten_core/molten_core.h
+@@ -41,6 +41,8 @@ enum
+     NPC_FLAMEWAKER_HEALER       = 11663,                    // Majordomo
+     NPC_FLAMEWAKER_ELITE        = 11664,                    // Majordomo
+ 
++    GO_LAVA_STEAM               = 178107,
++    GO_LAVA_SPLASH              = 178108,
+     GO_CACHE_OF_THE_FIRE_LORD   = 179703,
+     GO_RUNE_KRESS               = 176956,                   // Magmadar
+     GO_RUNE_MOHN                = 176957,                   // Gehennas
+@@ -116,7 +118,6 @@ class MANGOS_DLL_DECL instance_molten_core : public ScriptedInstance
+         uint64 m_uiGarrGUID;
+         uint64 m_uiSulfuronGUID;
+         uint64 m_uiMajordomoGUID;
+-        uint64 m_uiRagnarosGUID;
+ 
+         // Runes
+         uint64 m_uiRuneKoroGUID;
+@@ -127,6 +128,9 @@ class MANGOS_DLL_DECL instance_molten_core : public ScriptedInstance
+         uint64 m_uiRuneKressGUID;
+         uint64 m_uiRuneMohnGUID;
+ 
++        // Ragnaros related GOs
++        uint64 m_uiLavaSteamGUID;
++        uint64 m_uiLavaSplashGUID;
+         // Chests
+         uint64 m_uiFirelordCacheGUID;
+ 
