@@ -1,0 +1,64 @@
+diff --git a/src/game/Unit.cpp b/src/game/Unit.cpp
+index a914c0d..54b61cc 100644
+--- a/src/game/Unit.cpp
++++ b/src/game/Unit.cpp
+@@ -255,6 +255,8 @@ Unit::Unit()
+     // remove aurastates allowing special moves
+     for(int i=0; i < MAX_REACTIVE; ++i)
+         m_reactiveTimer[i] = 0;
++
++    m_bPrefereMeleeTargets = false;
+ }
+ 
+ Unit::~Unit()
+@@ -7670,6 +7672,27 @@ bool Unit::SelectHostileTarget()
+             }while (aura != tauntAuras.begin());
+         }
+     }
++    
++    //get the melee target with most thread
++    if (m_bPrefereMeleeTargets)
++    {
++        ThreatList const& tList = m_ThreatManager.getThreatList();
++        uint32 UnitThread = 0;
++        if (!tList.empty())
++        {
++            for (ThreatList::const_iterator i = tList.begin(); i != tList.end(); ++i)
++            {
++                uint64 uiGuid = (*i)->getUnitGuid();
++                //If we are within range melee the target
++                Unit *pUnit = GetMap()->GetPlayer(uiGuid);
++                if (pUnit && pUnit->GetTypeId() == TYPEID_PLAYER && IsWithinDistInMap(pUnit, ATTACK_DISTANCE) && (*i)->getThreat() > UnitThread)
++                {
++                    UnitThread = (*i)->getThreat();
++                    target = pUnit;
++                }
++            }
++        }
++    }
+ 
+     // No taunt aura or taunt aura caster is dead, standard target selection
+     if (!target && !m_ThreatManager.isThreatListEmpty())
+diff --git a/src/game/Unit.h b/src/game/Unit.h
+index 6ac79c4..890d0b2 100644
+--- a/src/game/Unit.h
++++ b/src/game/Unit.h
+@@ -1779,6 +1779,9 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
+         void AddPetAura(PetAura const* petSpell);
+         void RemovePetAura(PetAura const* petSpell);
+ 
++        //target selections
++        void SetPrefereMeleeTargets(bool bPrefere = true) { m_bPrefereMeleeTargets = bPrefere; }
++
+     protected:
+         explicit Unit ();
+ 
+@@ -1857,6 +1860,8 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
+ 
+         uint64 m_TotemSlot[MAX_TOTEM_SLOT];
+ 
++        bool m_bPrefereMeleeTargets;
++
+     private:                                                // Error traps for some wrong args using
+         // this will catch and prevent build for any cases when all optional args skipped and instead triggered used non boolean type
+         // no bodies expected for this declarations
