@@ -1,0 +1,178 @@
+
+@@ -442,6 +319,7 @@ extern void AddSC_boss_leotheras_the_blind();
+ extern void AddSC_boss_morogrim_tidewalker();
+ extern void AddSC_boss_the_lurker_below();
+ extern void AddSC_instance_serpentshrine_cavern();
++extern void AddSC_serpent_shrine();
+ extern void AddSC_boss_ahune();                             // CR, slave_pens
+ extern void AddSC_boss_hydromancer_thespia();               // CR, steam_vault
+ extern void AddSC_boss_mekgineer_steamrigger();
+
+@@ -932,6 +689,7 @@ void AddScripts()
+     AddSC_boss_morogrim_tidewalker();
+     AddSC_boss_the_lurker_below();
+     AddSC_instance_serpentshrine_cavern();
++    AddSC_serpent_shrine();
+     AddSC_boss_ahune();                                     // CR, slave_pens
+     AddSC_boss_hydromancer_thespia();                       // CR, steam_vault
+     AddSC_boss_mekgineer_steamrigger();
+new file mode 100644
+--- /dev/null
++++ b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.cpp
+@@ -0,0 +1,154 @@
++/* Copyright (C) 2006 - 2011 ScriptDev2 <http://www.scriptdev2.com/>
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++ */
++
++/* ScriptData
++SDName: Serpent_Shrine
++SD%Complete: 0
++SDComment: 
++SDCategory: coilfang_reservoir
++EndScriptData */
++
++/* ContentData
++mob_coilfang_beast_tamer
++EndContentData */
++
++#include "precompiled.h"
++#include "serpent_shrine.h"
++
++/*######
++## mob_coilfang_beast_tamer
++######*/
++
++enum
++{
++    SPELL_CLEAVE        = 38474,
++    SPELL_BESTIAL_WRATH = 38484,
++
++    NPC_SERPENTSHRINE_SPOREBAT = 21246,
++};
++
++struct MANGOS_DLL_DECL mob_coilfang_beast_tamerAI : public ScriptedAI
++{
++    mob_coilfang_beast_tamerAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_uiPetSummonTimer = 2000;
++        Reset();
++    }
++
++    uint64 m_aPetGUID[2];
++
++    uint32 m_uiPetSummonTimer;
++    uint32 m_uiCleaveTimer;
++    uint32 m_uiBestialWrathTimer;
++
++    void Reset()
++    {
++        m_uiCleaveTimer = urand(3000, 8000);
++        m_uiBestialWrathTimer = urand(15000, 25000);
++    }
++
++    void JustReachedHome()
++    {
++
++        m_uiPetSummonTimer = 2000;
++    }
++
++    void Aggro(Unit *pWho)
++    {
++        m_creature->CallForHelp(15);
++    }
++
++    void SummonPets()
++    {
++        Creature *pPet = m_creature->GetMap()->GetCreature(m_aPetGUID[0]);
++        if (!pPet)
++        {
++            float fX, fY, fZ;
++            m_creature->GetClosePoint(fX, fY, fZ, 3, 0, M_PI_F / 3);
++            m_aPetGUID[0] = m_creature->SummonCreature(NPC_SERPENTSHRINE_SPOREBAT, fX, fY, fZ, m_creature->GetOrientation(), TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5*MINUTE*IN_MILLISECONDS)->GetGUID();
++        }
++        else if (pPet->isDead())
++            pPet->Respawn();
++
++        pPet = m_creature->GetMap()->GetCreature(m_aPetGUID[1]);
++        if (!pPet)
++        {
++            float fX, fY, fZ;
++            m_creature->GetClosePoint(fX, fY, fZ, 3, 0, -M_PI_F / 3);
++            m_aPetGUID[1] = m_creature->SummonCreature(NPC_SERPENTSHRINE_SPOREBAT, fX, fY, fZ, m_creature->GetOrientation(), TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5*MINUTE*IN_MILLISECONDS)->GetGUID();
++        }
++        else if (pPet->isDead())
++            pPet->Respawn();
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        // timer for summoning adds
++        if (m_uiPetSummonTimer && m_uiPetSummonTimer <= uiDiff)
++        {
++            SummonPets();
++            m_uiPetSummonTimer = 0;
++        }
++        else
++            m_uiPetSummonTimer -= uiDiff;
++
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++        // Cleave
++        if (m_uiCleaveTimer <= uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE) == CAST_OK)
++                m_uiCleaveTimer = urand(3000, 8000);
++        }
++        else
++            m_uiCleaveTimer -= uiDiff;
++
++        // Bestial-Wrath
++        if (m_uiBestialWrathTimer <= uiDiff)
++        {
++            Creature *pPet = m_creature->GetMap()->GetCreature(m_aPetGUID[0]);
++            if (pPet && pPet->isAlive() && m_creature->GetDistance(pPet) <= 40.0f && !pPet->HasAura(SPELL_BESTIAL_WRATH))
++                DoCastSpellIfCan(pPet, SPELL_BESTIAL_WRATH);
++            else
++            {
++                pPet = m_creature->GetMap()->GetCreature(m_aPetGUID[1]);
++                if (pPet && pPet->isAlive() && m_creature->GetDistance(pPet) <= 40.0f && DoCastSpellIfCan(pPet, SPELL_BESTIAL_WRATH) == CAST_OK)
++                    m_uiBestialWrathTimer = urand(30000, 50000);
++            }
++        }
++        else
++            m_uiBestialWrathTimer -= uiDiff;
++
++        DoMeleeAttackIfReady();
++    }
++};
++
++CreatureAI* GetAI_mob_coilfang_beast_tamer(Creature* pCreature)
++{
++    return new mob_coilfang_beast_tamerAI(pCreature);
++}
++
++
++void AddSC_serpent_shrine()
++{
++    Script *newscript;
++
++    newscript = new Script;
++    newscript->Name = "mob_coilfang_beast_tamer";
++    newscript->GetAI = &GetAI_mob_coilfang_beast_tamer;
++    newscript->RegisterSelf();
++}
+\ No newline at end of file
+
