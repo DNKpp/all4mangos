@@ -19,7 +19,7 @@
 new file mode 100644
 --- /dev/null
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.cpp
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,210 @@
 +/* Copyright (C) 2006 - 2011 ScriptDev2 <http://www.scriptdev2.com/>
 + * This program is free software; you can redistribute it and/or modify
 + * it under the terms of the GNU General Public License as published by
@@ -164,6 +164,57 @@ new file mode 100644
 +    return new mob_coilfang_beast_tamerAI(pCreature);
 +}
 +
++/*######
++## mob_serpentshrine_water_elemental_totem
++######*/
++
++enum
++{
++    SPELL_SUMMON_WATER_ELEMENTAL    = 38622,
++    MOB_WATER_ELEMENTAL             = 22238,
++};
++
++struct MANGOS_DLL_DECL mob_serpentshrine_water_elemental_totemAI : public Scripted_NoMovementAI
++{
++    mob_serpentshrine_water_elemental_totemAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
++    {
++        DoCastSpellIfCan(m_creature, SPELL_SUMMON_WATER_ELEMENTAL);
++        Reset();
++    }
++
++    uint64 m_uiElementalGUID;
++
++    void Reset()
++    {
++        m_uiElementalGUID = NULL;
++    }
++
++    void JustSummoned(Creature *pCreature)
++    {
++        if (pCreature->GetEntry() == MOB_WATER_ELEMENTAL)
++            m_uiElementalGUID = pCreature->GetGUID();
++    }
++
++    void JustDied(Unit *pWho)
++    {
++        if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiElementalGUID))
++            pCreature->ForcedDespawn();
++    }
++    
++    void SummonedCreatureJustDied(Creature *pSummon)
++    {
++        if (pSummon->GetEntry() == MOB_WATER_ELEMENTAL)
++            m_creature->ForcedDespawn();
++    }
++
++    void UpdateAI(const uint32 uiDiff) { }
++};
++
++CreatureAI* GetAI_mob_serpentshrine_water_elemental_totem(Creature* pCreature)
++{
++    return new mob_serpentshrine_water_elemental_totemAI(pCreature);
++}
++
 +
 +void AddSC_serpent_shrine()
 +{
@@ -173,6 +224,10 @@ new file mode 100644
 +    newscript->Name = "mob_coilfang_beast_tamer";
 +    newscript->GetAI = &GetAI_mob_coilfang_beast_tamer;
 +    newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "mob_serpentshrine_water_elemental_totem";
++    newscript->GetAI = &GetAI_mob_serpentshrine_water_elemental_totem;
++    newscript->RegisterSelf();
 +}
-\ No newline at end of file
 
