@@ -230,4 +230,3 @@ new file mode 100644
 +    newscript->GetAI = &GetAI_mob_serpentshrine_water_elemental_totem;
 +    newscript->RegisterSelf();
 +}
-
