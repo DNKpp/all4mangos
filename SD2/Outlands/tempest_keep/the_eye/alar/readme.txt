@@ -1,0 +1,2 @@
+required core patches:
+PreferMeleeTargets

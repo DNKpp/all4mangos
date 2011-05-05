@@ -1,0 +1,3 @@
+required core patches:
+PreferMeleeTargets
+TemporarySummonGO
