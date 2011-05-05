@@ -1,49 +1,20 @@
-Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
-===================================================================
---- scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp	(revision 1958)
-+++ scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp	(working copy)
-@@ -36,9 +36,26 @@
- const int MAX_ENCOUNTER = 6;
- const int MAX_GENERATOR = 4;
- 
-+enum
-+{
-+	SPELL_SCALDING_WATER	= 37284,
-+
-+	NPC_COILFANG_FRENZY		= 21508,
-+
-+	GO_HYDROSS_CONSOLE		= 185115,
-+	GO_LURKER_CONSOLE		= 185116,
-+	GO_MOROGRIM_CONSOLE		= 185117,
-+	GO_KARATHRESS_CONSOLE	= 185118,
-+	GO_LEOTHERAS_CONSOLE	= 185114,
-+	GO_VASHJ_BRIDGE_CONSOLE = 184568,
-+    GO_VASHJ_BRIDGE_ONE     = 184203,
-+    GO_VASHJ_BRIDGE_TWO     = 184204,
-+    GO_VASHJ_BRIDGE_THREE   = 184205,
-+};
-+
- struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
- {
--    instance_serpentshrine_cavern(Map* pMap) : ScriptedInstance(pMap) { Initialize(); };
-+	instance_serpentshrine_cavern(Map* pMap) : ScriptedInstance(pMap) { Initialize(); };
- 
-     uint64 m_uiSharkkis;
-     uint64 m_uiTidalvess;
-@@ -46,10 +63,25 @@
-     uint64 m_uiLadyVashj;
+diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
+index 3e999f3..28bf836 100644
+--- a/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
++++ b/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
+@@ -47,8 +47,23 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
      uint64 m_uiKarathress;
      uint64 m_uiKarathressEvent_Starter;
-+	
-+	uint64 m_auiConsole_GUID[5];
+ 
++    uint64 m_auiConsole_GUID[5];
 +	uint64 m_uiVashjBridgeConsole_GUID;
 +	uint64 m_auiBridge_GUID[3];
- 
++
      uint32 m_auiShieldGenerator[MAX_GENERATOR];
      uint32 m_auiEncounter[MAX_ENCOUNTER];
-+	uint32 m_uiVashjBridgeConsole;
- 
-+	std::string strSaveData;
++    uint32 m_uiVashjBridgeConsole;
++
++    std::string strSaveData;
 +
 +	std::list<uint64> m_uiGreyheartTechnician;
 +
@@ -52,11 +23,10 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +	uint32 m_uiVashjDoor_Timer;
 +
 +	std::map<uint64, uint32> m_uiPlayerList;	//<Player GUID, SummonTimer>
-+
+ 
      void Initialize()
      {
-         memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
-@@ -61,8 +93,131 @@
+@@ -61,7 +76,125 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
          m_uiLadyVashj = 0;
          m_uiKarathress = 0;
          m_uiKarathressEvent_Starter = 0;
@@ -66,7 +36,7 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +
 +		m_uiVashjBridgeConsole = NOT_STARTED;
      }
- 
++ 
 +	void OnPlayerEnter(Player *pPlayer)
 +	{
 +		std::pair<uint64, uint32> Pair;
@@ -81,29 +51,24 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +
 +	void Update(uint32 uiDiff)
 +	{
-+		//vashj door animation
-+		if (m_uiVashjBridgeConsole == IN_PROGRESS)
-+		{
-+			if (m_uiVashjDoor_Timer < uiDiff)
-+			{
-+				if (GameObject *pVashjConsole = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
-+				{
-+					SetData(TYPE_VASHJ_BRIDGE_CONSOLE, DONE);
-+					Map::PlayerList const& players = instance->GetPlayers();
-+					if (Unit *pUnit = players.getFirst()->getSource())
-+					{
-+						pVashjConsole->Use(pUnit);
-+						debug_log("SD2: instance serpentshrine cavern: Lady Vashj Door opens");
-+					}
-+					else
-+						debug_log("SD2: instance serpentshrine cavern: found no player");
-+				}
-+				else
-+					debug_log("SD2: instance serpentshrine cavern: Lady Vashj Door not found");
-+			}
-+			else
-+				m_uiVashjDoor_Timer -= uiDiff;
-+		}
++		////vashj door animation
++		//if (m_uiVashjBridgeConsole == IN_PROGRESS)
++		//{
++		//	if (m_uiVashjDoor_Timer < uiDiff)
++		//	{
++		//		if (GameObject *pVashjConsole = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
++		//		{
++  //                  SetData(TYPE_VASHJ_BRIDGE_CONSOLE, DONE);
++		//			Map::PlayerList const& players = instance->GetPlayers();
++		//			if (Unit *pUnit = players.getFirst()->getSource())
++  //                      pVashjConsole->UseDoorOrButton();
++		//		}
++		//		else
++		//			debug_log("SD2: instance serpentshrine cavern: Lady Vashj Door not found");
++		//	}
++		//	else
++		//		m_uiVashjDoor_Timer -= uiDiff;
++		//}
 +
 +		//if lurker is done, the water has no effect
 +		if (GetData(TYPE_THELURKER_EVENT) != DONE)
@@ -184,11 +149,10 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +		}
 +		return false;
 +	}
-+
+ 
      bool IsEncounterInProgress() const
      {
-         for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
-@@ -72,15 +227,72 @@
+@@ -72,6 +205,64 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
          return false;
      }
  
@@ -233,6 +197,7 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +				break;
 +			case GO_VASHJ_BRIDGE_CONSOLE:
 +				m_uiVashjBridgeConsole_GUID = pGo->GetGUID();
++                //pGo->SetGoType(GAMEOBJECT_TYPE_GOOBER);
 +				CheckAllConsoles(pGo);
 +				break;
 +				//vashj brigde part GO´s
@@ -248,25 +213,19 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +		}
 +	}
 +
++
      void OnCreatureCreate(Creature* pCreature)
      {
          switch(pCreature->GetEntry())
-         {
--            case 21212: m_uiLadyVashj  = pCreature->GetGUID(); break;
--            case 21214: m_uiKarathress = pCreature->GetGUID(); break;
--            case 21966: m_uiSharkkis   = pCreature->GetGUID(); break;
--            case 21965: m_uiTidalvess  = pCreature->GetGUID(); break;
--            case 21964: m_uiCaribdis   = pCreature->GetGUID(); break;
-+            case 21212: m_uiLadyVashj			= pCreature->GetGUID(); break;
-+            case 21214: m_uiKarathress			= pCreature->GetGUID(); break;
-+            case 21966: m_uiSharkkis			= pCreature->GetGUID(); break;
-+            case 21965: m_uiTidalvess			= pCreature->GetGUID(); break;
-+            case 21964: m_uiCaribdis			= pCreature->GetGUID(); break;
-+			case 21263: m_uiGreyheartTechnician.push_back(pCreature->GetGUID());break;
+@@ -81,6 +272,7 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+             case 21966: m_uiSharkkis   = pCreature->GetGUID(); break;
+             case 21965: m_uiTidalvess  = pCreature->GetGUID(); break;
+             case 21964: m_uiCaribdis   = pCreature->GetGUID(); break;
++            case 21263: m_uiGreyheartTechnician.push_back(pCreature->GetGUID());break;
          }
      }
  
-@@ -110,24 +322,79 @@
+@@ -110,24 +302,79 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
          return 0;
      }
  
@@ -316,44 +275,45 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
          {
              case TYPE_HYDROSS_EVENT:
                  m_auiEncounter[0] = uiData;
-+				if (uiData == DONE)
++                if (uiData == DONE)
 +					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[0]))
 +						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_LEOTHERAS_EVENT:
                  m_auiEncounter[1] = uiData;
-+				if (uiData == DONE)
++                if (uiData == DONE)
 +					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[1]))
 +						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_THELURKER_EVENT:
                  m_auiEncounter[2] = uiData;
-+				if (uiData == DONE)
++                if (uiData == DONE)
 +					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[2]))
 +						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_KARATHRESS_EVENT:
                  m_auiEncounter[3] = uiData;
-+				if (uiData == DONE)
++                if (uiData == DONE)
 +					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[3]))
 +						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_MOROGRIM_EVENT:
                  m_auiEncounter[4] = uiData;
-+				if (uiData == DONE)
++                if (uiData == DONE)
 +					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[4]))
 +						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_LADYVASHJ_EVENT:
                  if (uiData == NOT_STARTED)
-@@ -146,9 +413,55 @@
+@@ -146,9 +393,56 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
              case TYPE_SHIELDGENERATOR4:
                  m_auiShieldGenerator[3] = uiData;
                  break;
-+			case TYPE_VASHJ_BRIDGE_CONSOLE:
++            case TYPE_VASHJ_BRIDGE_CONSOLE:
 +				m_uiVashjBridgeConsole = uiData;
 +				break;
          }
++
 +		if (uiData == DONE || uiData == SPECIAL)
 +			SaveData();
 +		if (uiData == SPECIAL)
@@ -402,16 +362,17 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
      uint32 GetData(uint32 uiType)
      {
          switch(uiType)
-@@ -182,6 +495,8 @@
- 
+@@ -183,6 +477,9 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
              case TYPE_SHIELDGENERATOR4:
                  return m_auiShieldGenerator[3];
+ 
 +            case TYPE_VASHJ_BRIDGE_CONSOLE:
 +				return m_uiVashjBridgeConsole;
- 
++
              case TYPE_VASHJ_PHASE3_CHECK:
                  for(uint8 i = 0; i < MAX_GENERATOR; ++i)
-@@ -196,6 +511,58 @@
+                 {
+@@ -196,6 +493,57 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
      }
  };
  
@@ -458,19 +419,18 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +		{
 +            pInstance->UseBridge(pPlayer);
 +			pInstance->SetData(TYPE_VASHJ_BRIDGE_CONSOLE, IN_PROGRESS);
++            //pGo->Refresh();
 +		}
 +        else
-+        { 
-+	        debug_log("SD2: serpentshrine cavern: Lady Vashj console used");
-+        }
++            return false;
 +	}
-+    return false;
++    return true;
 +}
 +
  InstanceData* GetInstanceData_instance_serpentshrine_cavern(Map* pMap)
  {
      return new instance_serpentshrine_cavern(pMap);
-@@ -208,4 +575,34 @@
+@@ -208,4 +556,35 @@ void AddSC_instance_serpentshrine_cavern()
      newscript->Name = "instance_serpent_shrine";
      newscript->GetInstanceData = &GetInstanceData_instance_serpentshrine_cavern;
      newscript->RegisterSelf();
@@ -490,7 +450,7 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +    newscript->pGOUse = &GOUse_go_morogrim_console;
 +    newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "go_karathress_console";
 +    newscript->pGOUse = &GOUse_go_karathress_console;
 +    newscript->RegisterSelf();
@@ -505,17 +465,32 @@ Index: scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine
 +    newscript->pGOUse = &GOUse_go_vashj_bridge_console;
 +    newscript->RegisterSelf();
  }
-Index: scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
-===================================================================
---- scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h	(revision 1958)
-+++ scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h	(working copy)
-@@ -26,6 +26,8 @@
++
+diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
+index b7bde5f..406eb61 100644
+--- a/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
++++ b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
+@@ -26,6 +26,22 @@ enum
      TYPE_SHIELDGENERATOR1           = 20,
      TYPE_SHIELDGENERATOR2           = 21,
      TYPE_SHIELDGENERATOR3           = 22,
 -    TYPE_SHIELDGENERATOR4           = 23
 +    TYPE_SHIELDGENERATOR4           = 23,
 +
-+	TYPE_VASHJ_BRIDGE_CONSOLE		= 24
++	TYPE_VASHJ_BRIDGE_CONSOLE		= 24,
++
++	SPELL_SCALDING_WATER	= 37284,
++
++	NPC_COILFANG_FRENZY		= 21508,
++
++	GO_HYDROSS_CONSOLE		= 185115,
++	GO_LURKER_CONSOLE		= 185116,
++	GO_MOROGRIM_CONSOLE		= 185117,
++	GO_KARATHRESS_CONSOLE	= 185118,
++	GO_LEOTHERAS_CONSOLE	= 185114,
++	GO_VASHJ_BRIDGE_CONSOLE = 184568,
++    GO_VASHJ_BRIDGE_ONE     = 184203,
++    GO_VASHJ_BRIDGE_TWO     = 184204,
++    GO_VASHJ_BRIDGE_THREE   = 184205,
  };
  #endif

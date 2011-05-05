@@ -1,29 +1,30 @@
+ -- hydross console
+ -- morogrim console
+ -- karathress console
+ -- leonithas console
+ -- lurker
+ -- vashj bridge console
+
 INSERT INTO `gameobject`
 VALUES
- --hydross console
 (2000284, 185115, 548, 1, -246.856, -384.768, -0.826649, 1.24763, 0, 0, 0.584137, 0.811655, 25, 100, 1),
- --morogrim console
 (2000295, 185117, 548, 1, 348.093, -684.94, -13.1582, 4.96359, 0, 0, 0.612955, -0.790118, 25, 100, 1),
- --karathress console
 (2000303, 185118, 548, 1, 456.452, -556.482, -7.54675, 0.0100584, 0, 0, 0.00502918, 0.999987, 25, 100, 1),
- --leonithas console
 (2000309, 185114, 548, 1, 372.804, -464.815, 30.1453, 3.14301, 0, 0, 1, -0.000706955, 25, 100, 1),
- -- lurker
-(2000340, 185116, 548, 1, 124.331, -432.494, -1.7947, 6.23895, 0, 0, 0.0221136, -0.999755, 25, 100, 1)
---vashj bridge console
+(2000340, 185116, 548, 1, 124.331, -432.494, -1.7947, 6.23895, 0, 0, 0.0221136, -0.999755, 25, 100, 1),
 (2000323, 184568, 548, 1, 47.7592, -583.55, 4.74041, 3.04579, 0, 0, 0.998853, 0.0478805, 0, 100, 1);
 
- --leo
+ -- leotheras
 UPDATE `gameobject_template` SET `ScriptName` = 'go_leotheras_console' WHERE `gameobject_template`.`entry` = 185114;
- --hydross
+ -- hydross
 UPDATE `gameobject_template` SET `ScriptName` = 'go_hydross_console' WHERE `gameobject_template`.`entry` = 185115;
- --lurker
+ -- lurker
 UPDATE `gameobject_template` SET `ScriptName` = 'go_lurker_console' WHERE `gameobject_template`.`entry` = 185116;
- --moro
+ -- morogrim
 UPDATE `gameobject_template` SET `ScriptName` = 'go_morogrim_console' WHERE `gameobject_template`.`entry` = 185117;
- --kara
+ -- karatress
 UPDATE `gameobject_template` SET `ScriptName` = 'go_karathress_console' WHERE `gameobject_template`.`entry` = 185118;
- --vashj
+ -- vashj
 UPDATE `gameobject_template` SET `ScriptName` = 'go_vashj_bridge_console' WHERE `gameobject_template`.`entry` = 184568;
 
  -- bridge

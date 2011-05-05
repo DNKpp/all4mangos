@@ -12,4 +12,3 @@ UPDATE `creature_ai_scripts` SET `event_param1` =  '1200',`event_param2` =  '640
 UPDATE `creature_ai_scripts` SET `event_param1` =  '4000',`event_param2` =  '6000',`event_param4` =  '12000' WHERE  `creature_ai_scripts`.`id` =2123003;
 UPDATE `creature_ai_scripts` SET  `event_inverse_phase_mask` =  '0', `action1_param1` =  '38203', `action1_param2` =  '4', `comment` =  'Greyheart Nether-Mage - Cast Blink' WHERE  `creature_ai_scripts`.`id` =2123007;
 UPDATE `creature_ai_scripts` SET  `action1_param1` =  '38633' WHERE  `creature_ai_scripts`.`id` =2123008;
-

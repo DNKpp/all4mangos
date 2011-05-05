@@ -84,7 +84,6 @@ new file mode 100644
 +
 +    void JustReachedHome()
 +    {
-+
 +        m_uiPetSummonTimer = 2000;
 +    }
 +
