@@ -13,5 +13,8 @@ UPDATE `creature_template` SET  `ScriptName` =  'boss_the_lurker_below' WHERE  `
 UPDATE `creature_template` SET  `ScriptName` =  'coilfang_ambusher' WHERE  `creature_template`.`entry` =21865;
 UPDATE `creature_template` SET  `ScriptName` =  'coilfang_guardian' WHERE  `creature_template`.`entry` =21873;
 
+ -- modify coilfang abusher template
+update `creature_template` set `minrangedmg`='161', `rangedattackpower`='85', `maxrangedmg`='206' where `entry`='21865';
+
  -- SD2 table (spout)
 INSERT INTO `custom_texts` VALUES ('-2500300',  '%s takes a deep breath!', NULL , NULL ,  '%s nimmt einen tiefen Atemzug!', NULL , NULL , NULL , NULL , NULL ,  '0',  '3',  '0',  '0',  'the lurker below EMOTE_SPOUT');
