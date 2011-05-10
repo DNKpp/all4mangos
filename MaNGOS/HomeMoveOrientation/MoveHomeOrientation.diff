@@ -1,5 +1,5 @@
 diff --git a/src/game/HomeMovementGenerator.cpp b/src/game/HomeMovementGenerator.cpp
-index 0f8d909..639cf89 100644
+index 0f8d909..53a42c1 100644
 --- a/src/game/HomeMovementGenerator.cpp
 +++ b/src/game/HomeMovementGenerator.cpp
 @@ -70,15 +70,22 @@ HomeMovementGenerator<Creature>::Update(Creature &owner, const uint32& time_diff
@@ -17,7 +17,7 @@ index 0f8d909..639cf89 100644
                  owner.SendHeartBeat(false);
              }
          }
-+        else if (owner.IsTemporarySummon())
++        else if (owner.IsTemporarySummon() && owner.GetDefaultMovementType() == IDLE_MOTION_TYPE)
 +        {
 +            float fX, fY, fZ, fO;
 +            owner.GetSummonPoint(fX, fY, fZ, fO);

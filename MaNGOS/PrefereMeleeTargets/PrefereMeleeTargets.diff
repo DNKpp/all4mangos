@@ -15,7 +15,7 @@ index a914c0d..54b61cc 100644
              }while (aura != tauntAuras.begin());
          }
      }
-+    
++
 +    //get the melee target with most thread
 +    if (m_bPrefereMeleeTargets)
 +    {

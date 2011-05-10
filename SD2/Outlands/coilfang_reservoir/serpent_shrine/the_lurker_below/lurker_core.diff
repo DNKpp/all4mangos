@@ -1,32 +1,47 @@
 diff --git a/src/game/Spell.cpp b/src/game/Spell.cpp
-index 930ff5c..49f7fcd 100644
+index 930ff5c..f083ace 100644
 --- a/src/game/Spell.cpp
 +++ b/src/game/Spell.cpp
-@@ -3739,6 +3739,10 @@ void Spell::HandleEffects(Unit *pUnitTarget,Item *pItemTarget,GameObject *pGOTar
+
+@@ -3739,6 +3745,10 @@ void Spell::HandleEffects(Unit *pUnitTarget,Item *pItemTarget,GameObject *pGOTar
      itemTarget = pItemTarget;
      gameObjTarget = pGOTarget;
  
 +    //ignore knockback from spout (the lurker below)
-+	if(m_spellInfo->Id == 37433 && unitTarget && unitTarget->IsInWater())
++    if(m_spellInfo->Id == 37433 && unitTarget && unitTarget->IsInWater())
 +        return;
 +
      uint8 eff = m_spellInfo->Effect[i];
  
-     damage = int32(CalculateDamage(i, unitTarget) * DamageMultiplier);--git a/src/game/SpellAuras.cpp b/src/game/SpellAuras.cpp
-index ae15a61..944a0f7 100644
+     damage = int32(CalculateDamage(i, unitTarget) * DamageMultiplier);
+diff --git a/src/game/SpellAuras.cpp b/src/game/SpellAuras.cpp
+index ae15a61..daf6d00 100644
 --- a/src/game/SpellAuras.cpp
 +++ b/src/game/SpellAuras.cpp
-@@ -1327,7 +1327,7 @@ void Aura::TriggerSpell()
+@@ -1327,11 +1327,14 @@ void Aura::TriggerSpell()
  //                    // Mark of Death
  //                    case 37125: break;
  //                    // Arcane Flurry
 -//                    case 37268: break;
-+                    case 37429: trigger_spell_id = 37433; break;
- //                    // Spout
- //                    case 37429: break;
- //                    // Spout
+-//                    // Spout
+-//                    case 37429: break;
+-//                    // Spout
+-//                    case 37430: break;
++                    // Spout
++                    case 37429:
++                        trigger_spell_id = 37433;
++                        break;
++                    // Spout
++                    case 37430:
++                        trigger_spell_id = 37433;
++                        break;
+ //                    // Karazhan - Chess NPC AI, Snapshot timer
+ //                    case 37440: break;
+ //                    // Karazhan - Chess NPC AI, action timer
+
+
 diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
-index eb2aa20..f4c8687 100644
+index eb2aa20..dc8768c 100644
 --- a/src/game/SpellEffects.cpp
 +++ b/src/game/SpellEffects.cpp
 @@ -356,6 +356,10 @@ void Spell::EffectSchoolDMG(SpellEffectIndex effect_idx)
@@ -34,13 +49,14 @@ index eb2aa20..f4c8687 100644
                          damage = unitTarget->GetMaxHealth() / 2;
                          break;
 +                    case 37433:
-+					    if (unitTarget && unitTarget->IsInWater())
-+							return;
-+						break;
++                        if (unitTarget && unitTarget->IsInWater())
++                            return;
++                        break;
                  }
                  break;
              }
-@@ -5928,7 +5932,13 @@ void Spell::EffectTransmitted(SpellEffectIndex eff_idx)
+
+@@ -5928,7 +5954,13 @@ void Spell::EffectTransmitted(SpellEffectIndex eff_idx)
      if(goinfo->type==GAMEOBJECT_TYPE_FISHINGNODE)
      {
          GridMapLiquidData liqData;
@@ -55,7 +71,7 @@ index eb2aa20..f4c8687 100644
          { // but this is not proper, we really need to ignore not materialized objects
              SendCastResult(SPELL_FAILED_NOT_HERE);
              SendChannelUpdate(0);
-@@ -5937,7 +5947,8 @@ void Spell::EffectTransmitted(SpellEffectIndex eff_idx)
+@@ -5937,7 +5969,8 @@ void Spell::EffectTransmitted(SpellEffectIndex eff_idx)
  
          // replace by water level in this case
          //fz = cMap->GetWaterLevel(fx, fy);
@@ -65,10 +81,3 @@ index eb2aa20..f4c8687 100644
      }
      // if gameobject is summoning object, it should be spawned right on caster's position
      else if(goinfo->type==GAMEOBJECT_TYPE_SUMMONING_RITUAL)
-@@ -6200,4 +6211,4 @@ void Spell::EffectRedirectThreat(SpellEffectIndex eff_idx)
- {
-     if (unitTarget)
-         m_caster->getHostileRefManager().SetThreatRedirection(unitTarget->GetObjectGuid());
--}
-+}
-\ No newline at end of file

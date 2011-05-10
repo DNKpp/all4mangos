@@ -1,1 +1,1 @@
-UPDATE `creature_template` SET  `unit_flags` =  '512' WHERE  `creature_template`.`entry` =11502;
+UPDATE `creature_template` SET  `unit_flags` =  '512', `MovementType` =  '0' WHERE  `creature_template`.`entry` =11502;
