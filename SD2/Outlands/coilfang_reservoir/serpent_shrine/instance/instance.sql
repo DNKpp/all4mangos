@@ -12,3 +12,6 @@ UPDATE `creature_ai_scripts` SET `event_param1` =  '1200',`event_param2` =  '640
 UPDATE `creature_ai_scripts` SET `event_param1` =  '4000',`event_param2` =  '6000',`event_param4` =  '12000' WHERE  `creature_ai_scripts`.`id` =2123003;
 UPDATE `creature_ai_scripts` SET  `event_inverse_phase_mask` =  '0', `action1_param1` =  '38203', `action1_param2` =  '4', `comment` =  'Greyheart Nether-Mage - Cast Blink' WHERE  `creature_ai_scripts`.`id` =2123007;
 UPDATE `creature_ai_scripts` SET  `action1_param1` =  '38633' WHERE  `creature_ai_scripts`.`id` =2123008;
+
+ -- add script to "coilfang frenzy" an change inhabittype to water and ground only
+UPDATE `creature_template` SET  `InhabitType` =  '3', `ScriptName` =  'mob_coilfang_frenzy' WHERE  `creature_template`.`entry` =21508;

@@ -1,5 +1,5 @@
 diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
-index 3e999f3..28bf836 100644
+index 3e999f3..5c8517b 100644
 --- a/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/instance_serpent_shrine.cpp
 @@ -47,8 +47,23 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
@@ -7,8 +7,8 @@ index 3e999f3..28bf836 100644
      uint64 m_uiKarathressEvent_Starter;
  
 +    uint64 m_auiConsole_GUID[5];
-+	uint64 m_uiVashjBridgeConsole_GUID;
-+	uint64 m_auiBridge_GUID[3];
++    uint64 m_uiVashjBridgeConsole_GUID;
++    uint64 m_auiBridge_GUID[3];
 +
      uint32 m_auiShieldGenerator[MAX_GENERATOR];
      uint32 m_auiEncounter[MAX_ENCOUNTER];
@@ -16,208 +16,218 @@ index 3e999f3..28bf836 100644
 +
 +    std::string strSaveData;
 +
-+	std::list<uint64> m_uiGreyheartTechnician;
++    std::list<uint64> m_uiGreyheartTechnician;
 +
-+	//timer
-+	uint32 m_uiWaterCheck_Timer;
-+	uint32 m_uiVashjDoor_Timer;
++    //timer
++    uint32 m_uiWaterCheck_Timer;
++    uint32 m_uiVashjDoor_Timer;
 +
-+	std::map<uint64, uint32> m_uiPlayerList;	//<Player GUID, SummonTimer>
++    std::map<uint64, uint32> m_uiPlayerList;    //<Player GUID, SummonTimer>
  
      void Initialize()
      {
-@@ -61,7 +76,125 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -61,6 +76,135 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
          m_uiLadyVashj = 0;
          m_uiKarathress = 0;
          m_uiKarathressEvent_Starter = 0;
 +
-+		m_uiWaterCheck_Timer = 100;
-+		m_uiVashjDoor_Timer	= 10000;
++        m_uiWaterCheck_Timer = 1000;
++        m_uiVashjDoor_Timer    = 10000;
 +
-+		m_uiVashjBridgeConsole = NOT_STARTED;
-     }
++        m_uiVashjBridgeConsole = NOT_STARTED;
++    }
 + 
-+	void OnPlayerEnter(Player *pPlayer)
-+	{
-+		std::pair<uint64, uint32> Pair;
-+		Pair = std::make_pair(pPlayer->GetGUID(), 1000);
-+		m_uiPlayerList.insert(Pair);
-+	}
++    void OnPlayerEnter(Player *pPlayer)
++    {
++        std::pair<uint64, uint32> Pair;
++        Pair = std::make_pair(pPlayer->GetGUID(), 1000);
++        m_uiPlayerList.insert(Pair);
++    }
 +
-+	void OnPlayerLeave(Player *pPlayer)
-+	{
-+		m_uiPlayerList.erase(m_uiPlayerList.find(pPlayer->GetGUID()));
-+	}
++    void OnPlayerLeave(Player *pPlayer)
++    {
++        m_uiPlayerList.erase(m_uiPlayerList.find(pPlayer->GetGUID()));
++    }
 +
-+	void Update(uint32 uiDiff)
-+	{
-+		////vashj door animation
-+		//if (m_uiVashjBridgeConsole == IN_PROGRESS)
-+		//{
-+		//	if (m_uiVashjDoor_Timer < uiDiff)
-+		//	{
-+		//		if (GameObject *pVashjConsole = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
-+		//		{
-+  //                  SetData(TYPE_VASHJ_BRIDGE_CONSOLE, DONE);
-+		//			Map::PlayerList const& players = instance->GetPlayers();
-+		//			if (Unit *pUnit = players.getFirst()->getSource())
-+  //                      pVashjConsole->UseDoorOrButton();
-+		//		}
-+		//		else
-+		//			debug_log("SD2: instance serpentshrine cavern: Lady Vashj Door not found");
-+		//	}
-+		//	else
-+		//		m_uiVashjDoor_Timer -= uiDiff;
-+		//}
++    // removes aura "Scalding Water" from every player in instance at lurkers death
++    void RemoveScaldingWater()
++    {
++        for(std::map<uint64, uint32>::iterator itr = m_uiPlayerList.begin(); itr != m_uiPlayerList.end(); ++itr)
++        {
++            Player *pPlayer = instance->GetPlayer((*itr).first);
++            if (pPlayer && pPlayer->isAlive() && pPlayer->HasAura(SPELL_SCALDING_WATER))
++                pPlayer->RemoveAurasDueToSpell(SPELL_SCALDING_WATER);
++        }
++    }
 +
-+		//if lurker is done, the water has no effect
-+		if (GetData(TYPE_THELURKER_EVENT) != DONE)
-+		{
-+			if (!IsATechnicianAlive())
-+			{
-+				//add aura
-+				if (m_uiWaterCheck_Timer <= uiDiff)
-+				{
-+					if(!m_uiPlayerList.empty())
-+					{
-+						//checking each player on the map, if they are in the water or if they have
-+						//the SPELL_SCALDING_WATER aura
-+						for(std::map<uint64, uint32>::iterator itr = m_uiPlayerList.begin();
-+							itr != m_uiPlayerList.end(); ++itr)
-+						{
-+							Player *pPlayer = instance->GetPlayer((*itr).first);
-+							if (pPlayer->IsInWater() && pPlayer->isAlive() && !pPlayer->HasAura(SPELL_SCALDING_WATER))
-+							{
-+								pPlayer->CastSpell(pPlayer,SPELL_SCALDING_WATER,true);
-+								(*itr).second = 3000;
-+							}
-+							else if (!pPlayer->IsInWater())
-+							{
-+								//remove the aura if the player is 3 seconds out of the water (to prevent the "jumping"-bug)
-+								if((*itr).second <= uiDiff)
-+									pPlayer->RemoveAurasDueToSpell(SPELL_SCALDING_WATER);
-+								else 
-+									(*itr).second -= uiDiff;
-+							}
-+							else
-+								(*itr).second = 3000;
-+						}
-+					}
-+					m_uiWaterCheck_Timer = 100;
-+				}
-+				else 
-+					m_uiWaterCheck_Timer -= uiDiff;
-+			}
-+			else
-+			{
-+				//spawn frenzys
++    void Update(uint32 uiDiff)
++    {
++        ////vashj door animation
++        //if (m_uiVashjBridgeConsole == IN_PROGRESS)
++        //{
++        //    if (m_uiVashjDoor_Timer < uiDiff)
++        //    {
++        //        if (GameObject *pVashjConsole = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
++        //        {
++        //            SetData(TYPE_VASHJ_BRIDGE_CONSOLE, DONE);
++        //            Map::PlayerList const& players = instance->GetPlayers();
++        //            if (Unit *pUnit = players.getFirst()->getSource())
++        //                pVashjConsole->UseDoorOrButton();
++        //        }
++        //        else
++        //            debug_log("SD2: instance serpentshrine cavern: Lady Vashj Door not found");
++        //    }
++        //    else
++        //        m_uiVashjDoor_Timer -= uiDiff;
++        //}
++
++        //if lurker is done, the water has no effect
++        if (GetData(TYPE_THELURKER_EVENT) != DONE)
++        {
++            if (!IsATechnicianAlive())
++            {
++                //add aura
++                if (m_uiWaterCheck_Timer <= uiDiff)
++                {
++                    if(!m_uiPlayerList.empty())
++                    {
++                        //checking each player on the map, if they are in the water or if they have
++                        //the SPELL_SCALDING_WATER aura
++                        for(std::map<uint64, uint32>::iterator itr = m_uiPlayerList.begin();
++                            itr != m_uiPlayerList.end(); ++itr)
++                        {
++                            Player *pPlayer = instance->GetPlayer((*itr).first);
++                            if (pPlayer && pPlayer->IsInWater() && pPlayer->isAlive() && !pPlayer->HasAura(SPELL_SCALDING_WATER))
++                            {
++                                pPlayer->CastSpell(pPlayer,SPELL_SCALDING_WATER,true);
++                                (*itr).second = 300;
++                            }
++                            else if (!pPlayer->IsInWater())
++                            {
++                                //remove the aura if the player is 3 seconds out of the water (to prevent the "jumping"-bug)
++                                if((*itr).second <= uiDiff)
++                                    pPlayer->RemoveAurasDueToSpell(SPELL_SCALDING_WATER);
++                                else 
++                                    (*itr).second -= uiDiff;
++                            }
++                            else
++                                (*itr).second = 300;
++                        }
++                    }
++                    m_uiWaterCheck_Timer = 1000;
++                }
++                else 
++                    m_uiWaterCheck_Timer -= uiDiff;
++            }
++            else
++            {
++                //spawn frenzys
 +                //if the player is in water for a long time, more and more frenzys will spawn :)
-+				for(std::map<uint64, uint32>::iterator itr = m_uiPlayerList.begin(); 
-+						itr != m_uiPlayerList.end(); ++itr)
-+				{
-+					Player *pPlayer = instance->GetPlayer((*itr).first);
-+					if (pPlayer->IsInWater() && pPlayer->isAlive())
-+					{
-+						if((*itr).second <= uiDiff)
-+						{
-+							pPlayer->SummonCreature(NPC_COILFANG_FRENZY,
-+								pPlayer->GetPositionX(), pPlayer->GetPositionY(), 
-+								pPlayer->GetPositionZ(), 0, 
-+								TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT,
-+								3000);
-+							(*itr).second = 3000;       //the time it needs to spawn a new frenzy for the player
-+						}
-+						else 
-+							(*itr).second -= uiDiff;
-+					}
-+				}
-+			}
-+		}
-+	}
-+	//when 1 of the Greyheart Technician is alive return true; otherwise return false;
-+	bool IsATechnicianAlive()
-+	{
-+		std::list<uint64>::iterator itr = m_uiGreyheartTechnician.begin();
-+		for (; itr != m_uiGreyheartTechnician.end(); ++itr)
-+		{
-+			Creature *pCreature = instance->GetCreature((*itr));
-+			if (pCreature)
-+			{
-+				if (pCreature->isAlive())
-+					return true;
-+			}
-+		}
-+		return false;
-+	}
++                for(std::map<uint64, uint32>::iterator itr = m_uiPlayerList.begin(); 
++                        itr != m_uiPlayerList.end(); ++itr)
++                {
++                    Player *pPlayer = instance->GetPlayer((*itr).first);
++                    if (pPlayer && pPlayer->IsInWater() && pPlayer->isAlive())
++                    {
++                        if((*itr).second <= uiDiff)
++                        {
++                            pPlayer->SummonCreature(NPC_COILFANG_FRENZY,
++                                pPlayer->GetPositionX(), pPlayer->GetPositionY(), 
++                                pPlayer->GetPositionZ(), 0, 
++                                TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT,
++                                3000);
++                            (*itr).second = 3000;       //the time it needs to spawn a new frenzy for the player
++                        }
++                        else 
++                            (*itr).second -= uiDiff;
++                    }
++                }
++            }
++        }
++    }
++    //when 1 of the Greyheart Technician is alive return true; otherwise return false;
++    bool IsATechnicianAlive()
++    {
++        std::list<uint64>::iterator itr = m_uiGreyheartTechnician.begin();
++        for (; itr != m_uiGreyheartTechnician.end(); ++itr)
++        {
++            Creature *pCreature = instance->GetCreature((*itr));
++            if (pCreature)
++            {
++                if (pCreature->isAlive())
++                    return true;
++            }
++        }
++        return false;
+     }
  
      bool IsEncounterInProgress() const
-     {
-@@ -72,6 +205,64 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -72,6 +216,64 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
          return false;
      }
  
-+	void OnObjectCreate(GameObject *pGo)
-+	{
-+		switch(pGo->GetEntry())
-+		{
-+			case GO_HYDROSS_CONSOLE:		
-+				m_auiConsole_GUID[0] = pGo->GetGUID();
-+				if (m_auiEncounter[0] == DONE)
-+					pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				else
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				break;
-+			case GO_LEOTHERAS_CONSOLE:		
-+				m_auiConsole_GUID[1] = pGo->GetGUID();
-+				if (m_auiEncounter[1] == DONE)
-+					pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				else
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				break;
-+			case GO_LURKER_CONSOLE:		
-+				m_auiConsole_GUID[2] = pGo->GetGUID();
-+				if (m_auiEncounter[2] == DONE)
-+					pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				else
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				break;
-+			case GO_KARATHRESS_CONSOLE:		
-+				m_auiConsole_GUID[3] = pGo->GetGUID();
-+				if (m_auiEncounter[3] == DONE)
-+					pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				else
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				break;
-+			case GO_MOROGRIM_CONSOLE:		
-+				m_auiConsole_GUID[4] = pGo->GetGUID();
-+				if (m_auiEncounter[4] == DONE)
-+					pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				else
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				break;
-+			case GO_VASHJ_BRIDGE_CONSOLE:
-+				m_uiVashjBridgeConsole_GUID = pGo->GetGUID();
++    void OnObjectCreate(GameObject *pGo)
++    {
++        switch(pGo->GetEntry())
++        {
++            case GO_HYDROSS_CONSOLE:        
++                m_auiConsole_GUID[0] = pGo->GetGUID();
++                if (m_auiEncounter[0] == DONE)
++                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                else
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                break;
++            case GO_LEOTHERAS_CONSOLE:        
++                m_auiConsole_GUID[1] = pGo->GetGUID();
++                if (m_auiEncounter[1] == DONE)
++                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                else
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                break;
++            case GO_LURKER_CONSOLE:        
++                m_auiConsole_GUID[2] = pGo->GetGUID();
++                if (m_auiEncounter[2] == DONE)
++                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                else
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                break;
++            case GO_KARATHRESS_CONSOLE:        
++                m_auiConsole_GUID[3] = pGo->GetGUID();
++                if (m_auiEncounter[3] == DONE)
++                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                else
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                break;
++            case GO_MOROGRIM_CONSOLE:        
++                m_auiConsole_GUID[4] = pGo->GetGUID();
++                if (m_auiEncounter[4] == DONE)
++                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                else
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                break;
++            case GO_VASHJ_BRIDGE_CONSOLE:
++                m_uiVashjBridgeConsole_GUID = pGo->GetGUID();
 +                //pGo->SetGoType(GAMEOBJECT_TYPE_GOOBER);
-+				CheckAllConsoles(pGo);
-+				break;
-+				//vashj brigde part GO´s
-+			case GO_VASHJ_BRIDGE_ONE:
-+				m_auiBridge_GUID[0] = pGo->GetGUID();
-+				break;
-+			case GO_VASHJ_BRIDGE_TWO:
-+				m_auiBridge_GUID[1] = pGo->GetGUID();
-+				break;
-+			case GO_VASHJ_BRIDGE_THREE:
-+				m_auiBridge_GUID[2] = pGo->GetGUID();
-+				break;
-+		}
-+	}
++                CheckAllConsoles(pGo);
++                break;
++                //vashj brigde part GO´s
++            case GO_VASHJ_BRIDGE_ONE:
++                m_auiBridge_GUID[0] = pGo->GetGUID();
++                break;
++            case GO_VASHJ_BRIDGE_TWO:
++                m_auiBridge_GUID[1] = pGo->GetGUID();
++                break;
++            case GO_VASHJ_BRIDGE_THREE:
++                m_auiBridge_GUID[2] = pGo->GetGUID();
++                break;
++        }
++    }
 +
 +
      void OnCreatureCreate(Creature* pCreature)
      {
          switch(pCreature->GetEntry())
-@@ -81,6 +272,7 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -81,6 +283,7 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
              case 21966: m_uiSharkkis   = pCreature->GetGUID(); break;
              case 21965: m_uiTidalvess  = pCreature->GetGUID(); break;
              case 21964: m_uiCaribdis   = pCreature->GetGUID(); break;
@@ -225,39 +235,39 @@ index 3e999f3..28bf836 100644
          }
      }
  
-@@ -110,24 +302,79 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -110,24 +313,83 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
          return 0;
      }
  
-+	void CheckAllConsoles()
-+	{
-+		for (uint8 i = 0; i < 5; i++)
-+		{
-+			if (m_auiEncounter[i] != SPECIAL)
-+			{
-+				if (GameObject *pGo = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				return;
-+			}
-+		}
-+		if (GameObject *pGo = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
-+			pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+	}
++    void CheckAllConsoles()
++    {
++        for (uint8 i = 0; i < 5; i++)
++        {
++            if (m_auiEncounter[i] != SPECIAL)
++            {
++                if (GameObject *pGo = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                return;
++            }
++        }
++        if (GameObject *pGo = instance->GetGameObject(m_uiVashjBridgeConsole_GUID))
++            pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++    }
 +
-+	void CheckAllConsoles(GameObject *pGo)
-+	{
-+		for (uint8 i = 0; i < 5; i++)
-+		{
-+			if (m_auiEncounter[i] != SPECIAL)
-+			{
-+				if (pGo)
-+					pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+				return;
-+			}
-+		}
-+		if (pGo)
-+			pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+	}
++    void CheckAllConsoles(GameObject *pGo)
++    {
++        for (uint8 i = 0; i < 5; i++)
++        {
++            if (m_auiEncounter[i] != SPECIAL)
++            {
++                if (pGo)
++                    pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                return;
++            }
++        }
++        if (pGo)
++            pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++    }
 +
 +    void UseBridge(Player *pPlayer)
 +    {
@@ -276,176 +286,178 @@ index 3e999f3..28bf836 100644
              case TYPE_HYDROSS_EVENT:
                  m_auiEncounter[0] = uiData;
 +                if (uiData == DONE)
-+					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[0]))
-+						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                    if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[0]))
++                        pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_LEOTHERAS_EVENT:
                  m_auiEncounter[1] = uiData;
 +                if (uiData == DONE)
-+					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[1]))
-+						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                    if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[1]))
++                        pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_THELURKER_EVENT:
                  m_auiEncounter[2] = uiData;
 +                if (uiData == DONE)
-+					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[2]))
-+						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                {
++                    if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[2]))
++                        pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++
++                    RemoveScaldingWater();
++                }
                  break;
              case TYPE_KARATHRESS_EVENT:
                  m_auiEncounter[3] = uiData;
 +                if (uiData == DONE)
-+					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[3]))
-+						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                    if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[3]))
++                        pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_MOROGRIM_EVENT:
                  m_auiEncounter[4] = uiData;
 +                if (uiData == DONE)
-+					if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[4]))
-+						pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                    if (GameObject *pGo = instance->GetGameObject(m_auiConsole_GUID[4]))
++                        pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
                  break;
              case TYPE_LADYVASHJ_EVENT:
                  if (uiData == NOT_STARTED)
-@@ -146,9 +393,56 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -146,7 +408,54 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
              case TYPE_SHIELDGENERATOR4:
                  m_auiShieldGenerator[3] = uiData;
                  break;
 +            case TYPE_VASHJ_BRIDGE_CONSOLE:
-+				m_uiVashjBridgeConsole = uiData;
-+				break;
++                m_uiVashjBridgeConsole = uiData;
++                break;
++        }
++
++        if (uiData == DONE || uiData == SPECIAL)
++            SaveData();
++        if (uiData == SPECIAL)
++            CheckAllConsoles();
++    }
++
++    void SaveData()
++    {
++        OUT_SAVE_INST_DATA;
++
++        std::ostringstream saveStream;
++        saveStream << m_auiEncounter[0] << " " << m_auiEncounter[1] << " " << m_auiEncounter[2] << " " << m_auiEncounter[3] << " " << m_auiEncounter[4] << " " << m_auiEncounter[5];
++
++        strSaveData = saveStream.str();
++
++        SaveToDB();
++        OUT_SAVE_INST_DATA_COMPLETE;
++    }
++
++    const char* Save()
++    {
++        return strSaveData.c_str();
++    }
++
++    void Load(const char* chrIn)
++    {
++        if (!chrIn)
++        {
++            OUT_LOAD_INST_DATA_FAIL;
++            return;
          }
 +
-+		if (uiData == DONE || uiData == SPECIAL)
-+			SaveData();
-+		if (uiData == SPECIAL)
-+			CheckAllConsoles();
++        OUT_LOAD_INST_DATA(chrIn);
++
++        std::istringstream loadStream(chrIn);
++
++        loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3] >> m_auiEncounter[4] >> m_auiEncounter[5];
++
++        for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
++            if (m_auiEncounter[i] == IN_PROGRESS)
++                m_auiEncounter[i] = NOT_STARTED;
++
++        OUT_LOAD_INST_DATA_COMPLETE;
      }
  
-+	void SaveData()
-+	{
-+		OUT_SAVE_INST_DATA;
-+
-+		std::ostringstream saveStream;
-+		saveStream << m_auiEncounter[0] << " " << m_auiEncounter[1] << " " << m_auiEncounter[2] << " " << m_auiEncounter[3] << " " << m_auiEncounter[4] << " " << m_auiEncounter[5];
-+
-+		strSaveData = saveStream.str();
-+
-+		SaveToDB();
-+		OUT_SAVE_INST_DATA_COMPLETE;
-+	}
-+
-+	const char* Save()
-+	{
-+		return strSaveData.c_str();
-+	}
-+
-+	void Load(const char* chrIn)
-+	{
-+		if (!chrIn)
-+		{
-+			OUT_LOAD_INST_DATA_FAIL;
-+			return;
-+		}
-+
-+		OUT_LOAD_INST_DATA(chrIn);
-+
-+		std::istringstream loadStream(chrIn);
-+
-+		loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3] >> m_auiEncounter[4] >> m_auiEncounter[5];
-+
-+		for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
-+			if (m_auiEncounter[i] == IN_PROGRESS)
-+				m_auiEncounter[i] = NOT_STARTED;
-+
-+		OUT_LOAD_INST_DATA_COMPLETE;
-+	}
-+
      uint32 GetData(uint32 uiType)
-     {
-         switch(uiType)
-@@ -183,6 +477,9 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -183,6 +492,9 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
              case TYPE_SHIELDGENERATOR4:
                  return m_auiShieldGenerator[3];
  
 +            case TYPE_VASHJ_BRIDGE_CONSOLE:
-+				return m_uiVashjBridgeConsole;
++                return m_uiVashjBridgeConsole;
 +
              case TYPE_VASHJ_PHASE3_CHECK:
                  for(uint8 i = 0; i < MAX_GENERATOR; ++i)
                  {
-@@ -196,6 +493,57 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
+@@ -196,6 +508,57 @@ struct MANGOS_DLL_DECL instance_serpentshrine_cavern : public ScriptedInstance
      }
  };
  
 +bool GOUse_go_hydross_console(Player* pPlayer, GameObject* pGo)
 +{
 +    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
-+		pInstance->SetData(TYPE_HYDROSS_EVENT, SPECIAL);
++        pInstance->SetData(TYPE_HYDROSS_EVENT, SPECIAL);
 +    return false;
 +}
 +
 +bool GOUse_go_lurker_console(Player* pPlayer, GameObject* pGo)
 +{
 +    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
-+		pInstance->SetData(TYPE_THELURKER_EVENT, SPECIAL);
++        pInstance->SetData(TYPE_THELURKER_EVENT, SPECIAL);
 +    return false;
 +}
 +
 +bool GOUse_go_morogrim_console(Player* pPlayer, GameObject* pGo)
 +{
 +    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
-+		pInstance->SetData(TYPE_MOROGRIM_EVENT, SPECIAL);
++        pInstance->SetData(TYPE_MOROGRIM_EVENT, SPECIAL);
 +    return false;
 +}
 +
 +bool GOUse_go_karathress_console(Player* pPlayer, GameObject* pGo)
 +{
 +    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
-+		pInstance->SetData(TYPE_KARATHRESS_EVENT, SPECIAL);
++        pInstance->SetData(TYPE_KARATHRESS_EVENT, SPECIAL);
 +    return false;
 +}
 +
 +bool GOUse_go_leotheras_console(Player* pPlayer, GameObject* pGo)
 +{
 +    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
-+		pInstance->SetData(TYPE_LEOTHERAS_EVENT, SPECIAL);
++        pInstance->SetData(TYPE_LEOTHERAS_EVENT, SPECIAL);
 +    return false;
 +}
 +
 +bool GOUse_go_vashj_bridge_console(Player* pPlayer, GameObject* pGo)
 +{
 +    if (instance_serpentshrine_cavern* pInstance = (instance_serpentshrine_cavern*)pGo->GetInstanceData())
-+	{
-+		if (pInstance->GetData(TYPE_VASHJ_BRIDGE_CONSOLE) == NOT_STARTED)
-+		{
++    {
++        if (pInstance->GetData(TYPE_VASHJ_BRIDGE_CONSOLE) == NOT_STARTED)
++        {
 +            pInstance->UseBridge(pPlayer);
-+			pInstance->SetData(TYPE_VASHJ_BRIDGE_CONSOLE, IN_PROGRESS);
++            pInstance->SetData(TYPE_VASHJ_BRIDGE_CONSOLE, IN_PROGRESS);
 +            //pGo->Refresh();
-+		}
++        }
 +        else
 +            return false;
-+	}
++    }
 +    return true;
 +}
 +
  InstanceData* GetInstanceData_instance_serpentshrine_cavern(Map* pMap)
  {
      return new instance_serpentshrine_cavern(pMap);
-@@ -208,4 +556,35 @@ void AddSC_instance_serpentshrine_cavern()
+@@ -208,4 +571,34 @@ void AddSC_instance_serpentshrine_cavern()
      newscript->Name = "instance_serpent_shrine";
      newscript->GetInstanceData = &GetInstanceData_instance_serpentshrine_cavern;
      newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "go_hydross_console";
 +    newscript->pGOUse = &GOUse_go_hydross_console;
 +    newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "go_lurker_console";
 +    newscript->pGOUse = &GOUse_go_lurker_console;
 +    newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "go_morogrim_console";
 +    newscript->pGOUse = &GOUse_go_morogrim_console;
 +    newscript->RegisterSelf();
@@ -455,19 +467,18 @@ index 3e999f3..28bf836 100644
 +    newscript->pGOUse = &GOUse_go_karathress_console;
 +    newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "go_leotheras_console";
 +    newscript->pGOUse = &GOUse_go_leotheras_console;
 +    newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "go_vashj_bridge_console";
 +    newscript->pGOUse = &GOUse_go_vashj_bridge_console;
 +    newscript->RegisterSelf();
  }
-+
 diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
-index b7bde5f..406eb61 100644
+index b7bde5f..9b8bd43 100644
 --- a/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.h
 @@ -26,6 +26,22 @@ enum
@@ -477,18 +488,18 @@ index b7bde5f..406eb61 100644
 -    TYPE_SHIELDGENERATOR4           = 23
 +    TYPE_SHIELDGENERATOR4           = 23,
 +
-+	TYPE_VASHJ_BRIDGE_CONSOLE		= 24,
++    TYPE_VASHJ_BRIDGE_CONSOLE        = 24,
 +
-+	SPELL_SCALDING_WATER	= 37284,
++    SPELL_SCALDING_WATER    = 37284,
 +
-+	NPC_COILFANG_FRENZY		= 21508,
++    NPC_COILFANG_FRENZY        = 21508,
 +
-+	GO_HYDROSS_CONSOLE		= 185115,
-+	GO_LURKER_CONSOLE		= 185116,
-+	GO_MOROGRIM_CONSOLE		= 185117,
-+	GO_KARATHRESS_CONSOLE	= 185118,
-+	GO_LEOTHERAS_CONSOLE	= 185114,
-+	GO_VASHJ_BRIDGE_CONSOLE = 184568,
++    GO_HYDROSS_CONSOLE        = 185115,
++    GO_LURKER_CONSOLE        = 185116,
++    GO_MOROGRIM_CONSOLE        = 185117,
++    GO_KARATHRESS_CONSOLE    = 185118,
++    GO_LEOTHERAS_CONSOLE    = 185114,
++    GO_VASHJ_BRIDGE_CONSOLE = 184568,
 +    GO_VASHJ_BRIDGE_ONE     = 184203,
 +    GO_VASHJ_BRIDGE_TWO     = 184204,
 +    GO_VASHJ_BRIDGE_THREE   = 184205,

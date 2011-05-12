@@ -1,4 +1,4 @@
-
+diff --git a/system/ScriptLoader.cpp b/system/ScriptLoader.cpp
 @@ -442,6 +319,7 @@ extern void AddSC_boss_leotheras_the_blind();
  extern void AddSC_boss_morogrim_tidewalker();
  extern void AddSC_boss_the_lurker_below();
@@ -16,10 +16,11 @@
      AddSC_boss_ahune();                                     // CR, slave_pens
      AddSC_boss_hydromancer_thespia();                       // CR, steam_vault
      AddSC_boss_mekgineer_steamrigger();
+diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.cpp
 new file mode 100644
 --- /dev/null
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/serpent_shrine.cpp
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,274 @@
 +/* Copyright (C) 2006 - 2011 ScriptDev2 <http://www.scriptdev2.com/>
 + * This program is free software; you can redistribute it and/or modify
 + * it under the terms of the GNU General Public License as published by
@@ -92,6 +93,7 @@ new file mode 100644
 +        m_creature->CallForHelp(15);
 +    }
 +
++    // summons 2 Serpentshrine Sporebats on the right and left
 +    void SummonPets()
 +    {
 +        Creature *pPet = m_creature->GetMap()->GetCreature(m_aPetGUID[0]);
@@ -177,36 +179,53 @@ new file mode 100644
 +{
 +    mob_serpentshrine_water_elemental_totemAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
 +    {
-+        DoCastSpellIfCan(m_creature, SPELL_SUMMON_WATER_ELEMENTAL);
 +        Reset();
++        m_uiSummonElementalTimer = 1000;
 +    }
 +
-+    uint64 m_uiElementalGUID;
++    std::list<uint64> m_uiElementalGUIDs;
++    uint32 m_uiSummonElementalTimer;
 +
-+    void Reset()
-+    {
-+        m_uiElementalGUID = NULL;
-+    }
++    void Reset() { }
 +
 +    void JustSummoned(Creature *pCreature)
 +    {
 +        if (pCreature->GetEntry() == MOB_WATER_ELEMENTAL)
-+            m_uiElementalGUID = pCreature->GetGUID();
++            m_uiElementalGUIDs.push_back(pCreature->GetGUID());
++    }
++
++    void SummonedCreatureJustDied(Creature *pCreature)
++    {
++        if (pCreature->GetEntry() == MOB_WATER_ELEMENTAL)
++            m_uiElementalGUIDs.remove(pCreature->GetGUID());
 +    }
 +
 +    void JustDied(Unit *pWho)
 +    {
-+        if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiElementalGUID))
-+            pCreature->ForcedDespawn();
-+    }
-+    
-+    void SummonedCreatureJustDied(Creature *pSummon)
-+    {
-+        if (pSummon->GetEntry() == MOB_WATER_ELEMENTAL)
-+            m_creature->ForcedDespawn();
++        if (m_uiElementalGUIDs.empty())
++            return;
++
++        for (std::list<uint64>::iterator itr = m_uiElementalGUIDs.begin(); itr != m_uiElementalGUIDs.end(); ++itr)
++        {
++            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
++                pCreature->ForcedDespawn();
++        }
 +    }
 +
-+    void UpdateAI(const uint32 uiDiff) { }
++    void UpdateAI(const uint32 uiDiff) 
++    {
++        if (m_uiElementalGUIDs.size() >= 4)
++            return;
++
++        if (m_uiSummonElementalTimer <= uiDiff)
++        {
++            //DoCastSpellIfCan(m_creature, SPELL_SUMMON_WATER_ELEMENTAL);
++            DoSpawnCreature(SPELL_SUMMON_WATER_ELEMENTAL, 0, 0, 0, 0, TEMPSUMMON_CORPSE_DESPAWN, 0);
++            m_uiSummonElementalTimer = 8000;
++        }
++        else
++            m_uiSummonElementalTimer -= uiDiff;
++    }
 +};
 +
 +CreatureAI* GetAI_mob_serpentshrine_water_elemental_totem(Creature* pCreature)
@@ -214,6 +233,48 @@ new file mode 100644
 +    return new mob_serpentshrine_water_elemental_totemAI(pCreature);
 +}
 +
++/*######
++## mob_coilfang_frenzy
++######*/
++
++struct MANGOS_DLL_DECL mob_coilfang_frenzyAI : public ScriptedAI
++{
++    mob_coilfang_frenzyAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        Reset();
++    }
++
++    uint32 m_uiTargetIsInWaterTimer;
++
++    void Reset()
++    {
++        m_uiTargetIsInWaterTimer = 3000;
++    }
++
++    void UpdateAI(const uint32 uiDiff) 
++    {
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++        DoMeleeAttackIfReady();
++
++        if (m_creature->getVictim()->IsInWater())
++        {
++            m_uiTargetIsInWaterTimer = 3000;
++            return;
++        }
++
++        if (m_uiTargetIsInWaterTimer <= uiDiff)
++            m_creature->ForcedDespawn();
++        else
++            m_uiTargetIsInWaterTimer -= uiDiff;
++    }
++};
++
++CreatureAI* GetAI_mob_coilfang_frenzy(Creature* pCreature)
++{
++    return new mob_coilfang_frenzyAI(pCreature);
++}
 +
 +void AddSC_serpent_shrine()
 +{
@@ -228,4 +289,10 @@ new file mode 100644
 +    newscript->Name = "mob_serpentshrine_water_elemental_totem";
 +    newscript->GetAI = &GetAI_mob_serpentshrine_water_elemental_totem;
 +    newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "mob_coilfang_frenzy";
++    newscript->GetAI = &GetAI_mob_coilfang_frenzy;
++    newscript->RegisterSelf();
 +}
+
