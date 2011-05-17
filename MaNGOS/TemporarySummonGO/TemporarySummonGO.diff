@@ -1,5 +1,26 @@
+diff --git a/src/game/GameObject.h b/src/game/GameObject.h
+index 99ab379..f774039 100644
+--- a/src/game/GameObject.h
++++ b/src/game/GameObject.h
+@@ -506,16 +506,6 @@ struct GameObjectLocale
+     std::vector<std::string> CastBarCaption;
+ };
+ 
+-// client side GO show states
+-enum GOState
+-{
+-    GO_STATE_ACTIVE             = 0,                        // show in world as used and not reset (closed door open)
+-    GO_STATE_READY              = 1,                        // show in world as ready (closed door close)
+-    GO_STATE_ACTIVE_ALTERNATIVE = 2                         // show in world as used in alt way and not reset (closed door open by cannon fire)
+-};
+-
+-#define MAX_GO_STATE              3
+-
+ // from `gameobject`
+ struct GameObjectData
+ {
 diff --git a/src/game/Object.cpp b/src/game/Object.cpp
-index 4cc8025..21bfcf7 100644
+index 4cc8025..c1bd182 100644
 --- a/src/game/Object.cpp
 +++ b/src/game/Object.cpp
 @@ -42,6 +42,7 @@
@@ -14,11 +35,11 @@ index 4cc8025..21bfcf7 100644
      return pCreature;
  }
  
-+GameObject* WorldObject::SummonGameObject(uint32 id, float x, float y, float z, float ang1, TempSummonType spwtype, uint32 despwtime, float rotation0, float rotation1, float rotation2, float rotation3, uint32 animprogress)
++GameObject* WorldObject::SummonGameObject(uint32 id, float x, float y, float z, float ang1, TempSummonType spwtype, uint32 despwtime, float rotation0, float rotation1, float rotation2, float rotation3, uint32 animprogress, GOState state)
 +{
 +    TemporarySummonGO* pObject = new TemporarySummonGO(GetObjectGuid());
 +
-+    if (!pObject->Create(GetMap()->GenerateLocalLowGuid(HIGHGUID_UNIT), id, GetMap(), x, y, z, ang1, rotation0, rotation1, rotation2, rotation3, animprogress, GO_STATE_READY))
++    if (!pObject->Create(GetMap()->GenerateLocalLowGuid(HIGHGUID_UNIT), id, GetMap(), x, y, z, ang1, rotation0, rotation1, rotation2, rotation3, animprogress, state))
 +    {
 +        delete pObject;
 +        return NULL;
@@ -41,14 +62,31 @@ index 4cc8025..21bfcf7 100644
  {
      class NearUsedPosDo
 diff --git a/src/game/Object.h b/src/game/Object.h
-index c23f161..ff1169f 100644
+index c23f161..a515723 100644
 --- a/src/game/Object.h
 +++ b/src/game/Object.h
-@@ -561,6 +561,8 @@ class MANGOS_DLL_SPEC WorldObject : public Object
+@@ -54,6 +54,16 @@ enum TempSummonType
+     TEMPSUMMON_MANUAL_DESPAWN              = 8              // despawns when UnSummon() is called
+ };
+ 
++// client side GO show states
++enum GOState
++{
++    GO_STATE_ACTIVE             = 0,                        // show in world as used and not reset (closed door open)
++    GO_STATE_READY              = 1,                        // show in world as ready (closed door close)
++    GO_STATE_ACTIVE_ALTERNATIVE = 2                         // show in world as used in alt way and not reset (closed door open by cannon fire)
++};
++
++#define MAX_GO_STATE              3
++
+ class WorldPacket;
+ class UpdateData;
+ class WorldSession;
+@@ -561,6 +571,8 @@ class MANGOS_DLL_SPEC WorldObject : public Object
  
          Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false);
  
-+        GameObject* SummonGameObject(uint32 id, float x, float y, float z, float ang, TempSummonType spwtype, uint32 despwtime = 1000 , float  rotation0 = 0, float rotation1 = 0, float rotation2 = 0, float rotation3 = 0, uint32 animprogress = 100);
++        GameObject* SummonGameObject(uint32 id, float x, float y, float z, float ang, TempSummonType spwtype, uint32 despwtime = 1000 , float  rotation0 = 0, float rotation1 = 0, float rotation2 = 0, float rotation3 = 0, uint32 animprogress = 100, GOState state = GO_STATE_READY);
 +
          bool isActiveObject() const { return m_isActiveObject || m_viewPoint.hasViewers(); }
  

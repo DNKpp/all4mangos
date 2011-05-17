@@ -1,0 +1,440 @@
+diff --git a/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h b/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h
+index c459f11..4bfcd89 100644
+--- a/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h
++++ b/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h
+@@ -18,7 +18,16 @@ enum
+     TYPE_CHROMAGGUS             = 6,
+     TYPE_NEFARIAN               = 7,
+ 
++    DATA_RAZORGORE              = 8,
++    DATA_GRETHOK                = 9,
++    DATA_ORB_TRIGGER            = 10,
++
++    DATA_ORB_OF_DOMINATION      = 11,
++
+     NPC_RAZORGORE               = 12435,
++    NPC_GRETHOK                 = 12557,
++    NPC_BLACKWING_GUARDSMAN     = 14456,
++    NPC_ORB_TRIGGER             = 14449,
+     NPC_VAELASTRASZ             = 13020,
+     NPC_LASHLAYER               = 12017,
+     NPC_FIREMAW                 = 11983,
+@@ -35,39 +44,8 @@ enum
+     GO_DOOR_CHROMAGGUS_SIDE     = 179116,
+     GO_DOOR_CHROMAGGUS_EXIT     = 179117,
+     GO_DOOR_VAELASTRASZ         = 179364,
+-    GO_DOOR_LASHLAYER           = 179365
+-};
+-
+-class MANGOS_DLL_DECL instance_blackwing_lair : public ScriptedInstance
+-{
+-    public:
+-        instance_blackwing_lair(Map* pMap);
+-        ~instance_blackwing_lair() {}
+-
+-        void Initialize();
+-        bool IsEncounterInProgress() const;
+-
+-        void OnObjectCreate(GameObject* pGo);
+-
+-        void SetData(uint32 uiType, uint32 uiData);
+-        uint32 GetData(uint32 uiType);
+-
+-        const char* Save() { return m_strInstData.c_str(); }
+-        void Load(const char* chrIn);
+-
+-    protected:
+-        std::string m_strInstData;
+-        uint32 m_auiEncounter[MAX_ENCOUNTER];
+-
+-        // Doors
+-        uint64 m_uiRazorgoreEnterDoorGUID;
+-        uint64 m_uiRazorgoreExitDoorGUID;
+-        uint64 m_uiVaelastraszDoorGUID;
+-        uint64 m_uiLashlayerDoorGUID;
+-        uint64 m_uiChromaggusEnterDoorGUID;
+-        uint64 m_uiChromaggusExitDoorGUID;
+-        uint64 m_uiChromaggusSideDoorGUID;
+-        uint64 m_uiNefarianDoorGUID;
++    GO_DOOR_LASHLAYER           = 179365,
++    GO_ORB_OF_DOMINATION        = 177808,
++    GO_BLACK_DRAGON_EGG         = 177807,
+ };
+-
+ #endif
+diff --git a/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp b/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
+index 3bf2b7d..cb3ffba 100644
+--- a/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
++++ b/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
+@@ -24,159 +24,247 @@ EndScriptData */
+ #include "precompiled.h"
+ #include "blackwing_lair.h"
+ 
+-
+-instance_blackwing_lair::instance_blackwing_lair(Map* pMap) : ScriptedInstance(pMap),
+-    m_uiRazorgoreEnterDoorGUID(0),
+-    m_uiRazorgoreExitDoorGUID(0),
+-    m_uiVaelastraszDoorGUID(0),
+-    m_uiLashlayerDoorGUID(0),
+-    m_uiChromaggusEnterDoorGUID(0),
+-    m_uiChromaggusExitDoorGUID(0),
+-    m_uiChromaggusSideDoorGUID(0),
+-    m_uiNefarianDoorGUID(0)
++struct MANGOS_DLL_DECL instance_blackwing_lair : public ScriptedInstance
+ {
+-    Initialize();
+-}
++    instance_blackwing_lair(Map* pMap) : ScriptedInstance(pMap) {Initialize();};
+ 
+-void instance_blackwing_lair::Initialize()
+-{
+-    memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
+-}
++    void Initialize()
++    {
++        memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
++        m_uiRazorgoreEnterDoorGUID  = 0;
++        m_uiRazorgoreExitDoorGUID   = 0;
++        m_uiVaelastraszDoorGUID     = 0;
++        m_uiLashlayerDoorGUID       = 0;
++        m_uiChromaggusEnterDoorGUID = 0;
++        m_uiChromaggusExitDoorGUID  = 0;
++        m_uiChromaggusSideDoorGUID  = 0;
++        m_uiNefarianDoorGUID        = 0;
++        m_uiOrbOfDominationGUID     = 0;
++        m_uiRazagoreGUID            = 0;
++        m_uiGrethokGUID             = 0;
++        m_uiOrbTriggerGUID          = 0;
++    }
+ 
+-bool instance_blackwing_lair::IsEncounterInProgress() const
+-{
+-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
++    std::string m_strInstData;
++    uint32 m_auiEncounter[MAX_ENCOUNTER];
++
++    // Doors
++    uint64 m_uiRazorgoreEnterDoorGUID;
++    uint64 m_uiRazorgoreExitDoorGUID;
++    uint64 m_uiVaelastraszDoorGUID;
++    uint64 m_uiLashlayerDoorGUID;
++    uint64 m_uiChromaggusEnterDoorGUID;
++    uint64 m_uiChromaggusExitDoorGUID;
++    uint64 m_uiChromaggusSideDoorGUID;
++    uint64 m_uiOrbOfDominationGUID;
++    uint64 m_uiNefarianDoorGUID;
++
++    // Encounters & Trash
++    uint64 m_uiRazagoreGUID;
++    uint64 m_uiGrethokGUID;
++    uint64 m_uiOrbTriggerGUID;
++    std::list<uint64> m_uilBlackwingGuardsmanGUIDs;
++
++    bool IsEncounterInProgress() const
+     {
+-        if (m_auiEncounter[i] == IN_PROGRESS)
+-            return true;
++        for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
++        {
++            if (m_auiEncounter[i] == IN_PROGRESS)
++                return true;
++        }
++        return false;
+     }
+-    return false;
+-}
+ 
+-void instance_blackwing_lair::OnObjectCreate(GameObject* pGo)
+-{
+-    switch(pGo->GetEntry())
++    void OnCreatureCreate(Creature *pCreature)
+     {
+-        case GO_DOOR_RAZORGORE_ENTER:
+-            m_uiRazorgoreEnterDoorGUID = pGo->GetGUID();
+-            break;
+-        case GO_DOOR_RAZORGORE_EXIT:
+-            m_uiRazorgoreExitDoorGUID = pGo->GetGUID();
+-            if (m_auiEncounter[TYPE_RAZORGORE] == DONE)
+-                pGo->SetGoState(GO_STATE_ACTIVE);
+-            break;
+-        case GO_DOOR_NEFARIAN:
+-            m_uiNefarianDoorGUID = pGo->GetGUID();
+-            break;
+-        case GO_DOOR_CHROMAGGUS_ENTER:
+-            m_uiChromaggusEnterDoorGUID = pGo->GetGUID();
+-            break;
+-        case GO_DOOR_CHROMAGGUS_SIDE:
+-            m_uiChromaggusSideDoorGUID = pGo->GetGUID();
++        switch(pCreature->GetEntry())
++        {
++        case NPC_RAZORGORE:
++            m_uiRazagoreGUID = pCreature->GetGUID();
+             break;
+-        case GO_DOOR_CHROMAGGUS_EXIT:
+-            m_uiChromaggusExitDoorGUID = pGo->GetGUID();
+-            if (m_auiEncounter[TYPE_CHROMAGGUS] == DONE)
+-                pGo->SetGoState(GO_STATE_ACTIVE);
++        case NPC_GRETHOK:
++            m_uiGrethokGUID = pCreature->GetGUID();
+             break;
+-        case GO_DOOR_VAELASTRASZ:
+-            m_uiVaelastraszDoorGUID = pGo->GetGUID();
+-            if (m_auiEncounter[TYPE_VAELASTRASZ] == DONE)
+-                pGo->SetGoState(GO_STATE_ACTIVE);
++        case NPC_ORB_TRIGGER:
++            m_uiOrbTriggerGUID = pCreature->GetGUID();
+             break;
+-        case GO_DOOR_LASHLAYER:
+-            m_uiLashlayerDoorGUID = pGo->GetGUID();
+-            if (m_auiEncounter[TYPE_LASHLAYER] == DONE)
+-                pGo->SetGoState(GO_STATE_ACTIVE);
++        case NPC_BLACKWING_GUARDSMAN:
++            m_uilBlackwingGuardsmanGUIDs.push_back(pCreature->GetGUID());
+             break;
++        }
+     }
+-}
+ 
+-void instance_blackwing_lair::SetData(uint32 uiType, uint32 uiData)
+-{
+-    switch(uiType)
++    uint64 GetData64(uint32 uiTypeID)
+     {
+-        case TYPE_RAZORGORE:
+-            m_auiEncounter[uiType] = uiData;
+-            DoUseDoorOrButton(m_uiRazorgoreEnterDoorGUID);
+-            if(uiData == DONE)
+-                DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
+-            break;
+-        case TYPE_VAELASTRASZ:
+-            m_auiEncounter[uiType] = uiData;
+-            // Prevent the players from running back to the first room
+-            DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
+-            if(uiData == DONE)
+-                DoUseDoorOrButton(m_uiVaelastraszDoorGUID);
+-            break;
+-        case TYPE_LASHLAYER:
+-            m_auiEncounter[uiType] = uiData;
+-            if(uiData == DONE)
+-                DoUseDoorOrButton(m_uiLashlayerDoorGUID);
+-            break;
+-        case TYPE_FIREMAW:
+-        case TYPE_EBONROC:
+-        case TYPE_FLAMEGOR:
+-            m_auiEncounter[uiType] = uiData;
+-            break;
+-        case TYPE_CHROMAGGUS:
+-            m_auiEncounter[uiType] = uiData;
+-            DoUseDoorOrButton(m_uiChromaggusEnterDoorGUID);
+-            if (uiData == DONE)
+-                DoUseDoorOrButton(m_uiChromaggusExitDoorGUID);
+-            break;
+-        case TYPE_NEFARIAN:
+-            m_auiEncounter[uiType] = uiData;
+-            DoUseDoorOrButton(m_uiNefarianDoorGUID);
+-            break;
++        switch(uiTypeID)
++        {
++        case DATA_RAZORGORE:
++            return m_uiRazagoreGUID;
++        case DATA_ORB_OF_DOMINATION:
++            return m_uiOrbOfDominationGUID;
++        case DATA_GRETHOK:
++            return m_uiGrethokGUID;
++        case DATA_ORB_TRIGGER:
++            return m_uiOrbTriggerGUID;
++        }
++        return NULL;
++    }
++
++    void OnObjectCreate(GameObject* pGo)
++    {
++        switch(pGo->GetEntry())
++        {
++            case GO_DOOR_RAZORGORE_ENTER:
++                m_uiRazorgoreEnterDoorGUID = pGo->GetGUID();
++                break;
++            case GO_DOOR_RAZORGORE_EXIT:
++                m_uiRazorgoreExitDoorGUID = pGo->GetGUID();
++                if (m_auiEncounter[TYPE_RAZORGORE] == DONE)
++                    pGo->SetGoState(GO_STATE_ACTIVE);
++                break;
++            case GO_DOOR_NEFARIAN:
++                m_uiNefarianDoorGUID = pGo->GetGUID();
++                break;
++            case GO_DOOR_CHROMAGGUS_ENTER:
++                m_uiChromaggusEnterDoorGUID = pGo->GetGUID();
++                break;
++            case GO_DOOR_CHROMAGGUS_SIDE:
++                m_uiChromaggusSideDoorGUID = pGo->GetGUID();
++                break;
++            case GO_DOOR_CHROMAGGUS_EXIT:
++                m_uiChromaggusExitDoorGUID = pGo->GetGUID();
++                if (m_auiEncounter[TYPE_CHROMAGGUS] == DONE)
++                    pGo->SetGoState(GO_STATE_ACTIVE);
++                break;
++            case GO_DOOR_VAELASTRASZ:
++                m_uiVaelastraszDoorGUID = pGo->GetGUID();
++                if (m_auiEncounter[TYPE_VAELASTRASZ] == DONE)
++                    pGo->SetGoState(GO_STATE_ACTIVE);
++                break;
++            case GO_DOOR_LASHLAYER:
++                m_uiLashlayerDoorGUID = pGo->GetGUID();
++                if (m_auiEncounter[TYPE_LASHLAYER] == DONE)
++                    pGo->SetGoState(GO_STATE_ACTIVE);
++                break;
++            case GO_ORB_OF_DOMINATION:
++                m_uiOrbOfDominationGUID = pGo->GetGUID();
++                break;
++            case GO_BLACK_DRAGON_EGG:
++                pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
++                break;
++        }
+     }
+ 
+-    if (uiData == DONE)
++    void SetData(uint32 uiType, uint32 uiData)
+     {
+-        OUT_SAVE_INST_DATA;
++        switch(uiType)
++        {
++            case TYPE_RAZORGORE:
++                DoUseDoorOrButton(m_uiRazorgoreEnterDoorGUID);
++                if(uiData == DONE)
++                    DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
++                else if (uiData == FAIL)
++                {
++                    // respawn Grethok adds
++                    for (std::list<uint64>::iterator itr = m_uilBlackwingGuardsmanGUIDs.begin(); itr != m_uilBlackwingGuardsmanGUIDs.end(); ++itr)
++                    {
++                        if (Creature *pCreature = instance->GetCreature(*itr))
++                        {
++                            if (pCreature->isDead())
++                                pCreature->Respawn();
++                        }
++                    }
++                    // respawn Grethok the Controler
++                    if (Creature *pGrethok = instance->GetCreature(m_uiGrethokGUID))
++                    {
++                        if (pGrethok->isDead())
++                            pGrethok->Respawn();
++                    }
++                    uiData = NOT_STARTED;
++                }
++                m_auiEncounter[uiType] = uiData;
++                break;
++            case TYPE_VAELASTRASZ:
++                m_auiEncounter[uiType] = uiData;
++                // Prevent the players from running back to the first room
++                DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
++                if(uiData == DONE)
++                    DoUseDoorOrButton(m_uiVaelastraszDoorGUID);
++                break;
++            case TYPE_LASHLAYER:
++                m_auiEncounter[uiType] = uiData;
++                if(uiData == DONE)
++                    DoUseDoorOrButton(m_uiLashlayerDoorGUID);
++                break;
++            case TYPE_FIREMAW:
++            case TYPE_EBONROC:
++            case TYPE_FLAMEGOR:
++                m_auiEncounter[uiType] = uiData;
++                break;
++            case TYPE_CHROMAGGUS:
++                DoUseDoorOrButton(m_uiChromaggusSideDoorGUID);
++                if (uiData == DONE)
++                    DoUseDoorOrButton(m_uiChromaggusExitDoorGUID);
++                else if (uiData == FAIL)
++                {
++                    DoUseDoorOrButton(m_uiChromaggusEnterDoorGUID);
++                    uiData = NOT_STARTED;
++                }
++                m_auiEncounter[uiType] = uiData;
++                break;
++            case TYPE_NEFARIAN:
++                m_auiEncounter[uiType] = uiData;
++                DoUseDoorOrButton(m_uiNefarianDoorGUID);
++                break;
++        }
+ 
+-        std::ostringstream saveStream;
+-        saveStream << m_auiEncounter[0] << " " << m_auiEncounter[1] << " " << m_auiEncounter[2] << " "
+-            << m_auiEncounter[3] << " " << m_auiEncounter[4] << " " << m_auiEncounter[5] << " "
+-            << m_auiEncounter[6] << " " << m_auiEncounter[7];
++        if (uiData == DONE)
++        {
++            OUT_SAVE_INST_DATA;
+ 
+-        m_strInstData = saveStream.str();
++            std::ostringstream saveStream;
++            saveStream << m_auiEncounter[0] << " " << m_auiEncounter[1] << " " << m_auiEncounter[2] << " "
++                << m_auiEncounter[3] << " " << m_auiEncounter[4] << " " << m_auiEncounter[5] << " "
++                << m_auiEncounter[6] << " " << m_auiEncounter[7];
+ 
+-        SaveToDB();
+-        OUT_SAVE_INST_DATA_COMPLETE;
++            m_strInstData = saveStream.str();
++
++            SaveToDB();
++            OUT_SAVE_INST_DATA_COMPLETE;
++        }
+     }
+-}
+ 
+-void instance_blackwing_lair::Load(const char* chrIn)
+-{
+-    if (!chrIn)
++    void Load(const char* chrIn)
+     {
+-        OUT_LOAD_INST_DATA_FAIL;
+-        return;
+-    }
++        if (!chrIn)
++        {
++            OUT_LOAD_INST_DATA_FAIL;
++            return;
++        }
+ 
+-    OUT_LOAD_INST_DATA(chrIn);
++        OUT_LOAD_INST_DATA(chrIn);
+ 
+-    std::istringstream loadStream(chrIn);
+-    loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
+-        >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6] >> m_auiEncounter[7];
++        std::istringstream loadStream(chrIn);
++        loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
++            >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6] >> m_auiEncounter[7];
+ 
+-    for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+-    {
+-        if (m_auiEncounter[i] == IN_PROGRESS)
+-            m_auiEncounter[i] = NOT_STARTED;
+-    }
++        for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
++        {
++            if (m_auiEncounter[i] == IN_PROGRESS)
++                m_auiEncounter[i] = NOT_STARTED;
++        }
+ 
+-    OUT_LOAD_INST_DATA_COMPLETE;
+-}
++        OUT_LOAD_INST_DATA_COMPLETE;
++    }
+ 
+-uint32 instance_blackwing_lair::GetData(uint32 uiType)
+-{
+-    if (uiType < MAX_ENCOUNTER)
+-        return m_auiEncounter[uiType];
++    uint32 GetData(uint32 uiType)
++    {
++        if (uiType < MAX_ENCOUNTER)
++            return m_auiEncounter[uiType];
+ 
+-    return 0;
+-}
++        return 0;
++    }
++};
+ 
+ InstanceData* GetInstanceData_instance_blackwing_lair(Map* pMap)
+ {

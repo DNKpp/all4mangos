@@ -1,0 +1,67 @@
+diff --git a/scripts/eastern_kingdoms/blackwing_lair/boss_firemaw.cpp b/scripts/eastern_kingdoms/blackwing_lair/boss_firemaw.cpp
+index 17c5310..c026e32 100644
+--- a/scripts/eastern_kingdoms/blackwing_lair/boss_firemaw.cpp
++++ b/scripts/eastern_kingdoms/blackwing_lair/boss_firemaw.cpp
+@@ -16,8 +16,8 @@
+ 
+ /* ScriptData
+ SDName: Boss_Firemaw
+-SD%Complete: 80
+-SDComment: Thrash missing
++SD%Complete: 100
++SDComment:
+ SDCategory: Blackwing Lair
+ EndScriptData */
+ 
+@@ -29,7 +29,7 @@ enum
+     SPELL_SHADOW_FLAME          = 22539,
+     SPELL_WING_BUFFET           = 23339,
+     SPELL_FLAME_BUFFET          = 23341,
+-    SPELL_THRASH                = 3391,                     // TODO, missing
++    SPELL_THRASH                = 3391,
+ };
+ 
+ struct MANGOS_DLL_DECL boss_firemawAI : public ScriptedAI
+@@ -45,12 +45,14 @@ struct MANGOS_DLL_DECL boss_firemawAI : public ScriptedAI
+     uint32 m_uiShadowFlameTimer;
+     uint32 m_uiWingBuffetTimer;
+     uint32 m_uiFlameBuffetTimer;
++    uint32 m_uiTrashTimer;
+ 
+     void Reset()
+     {
+-        m_uiShadowFlameTimer = 30000;                       // These times are probably wrong
+-        m_uiWingBuffetTimer = 24000;
+-        m_uiFlameBuffetTimer = 5000;
++        m_uiShadowFlameTimer    = urand(15000, 18000);
++        m_uiWingBuffetTimer     = urand(30000, 35000);
++        m_uiFlameBuffetTimer    = 5000;
++        m_uiTrashTimer          = urand(7000, 21000);
+     }
+ 
+     void Aggro(Unit* pWho)
+@@ -93,7 +95,7 @@ struct MANGOS_DLL_DECL boss_firemawAI : public ScriptedAI
+                 if (m_creature->getThreatManager().getThreat(m_creature->getVictim()))
+                     m_creature->getThreatManager().modifyThreatPercent(m_creature->getVictim(), -75);
+ 
+-                m_uiWingBuffetTimer = 25000;
++                m_uiWingBuffetTimer = urand(30000, 35000);
+             }
+         }
+         else
+@@ -108,6 +110,15 @@ struct MANGOS_DLL_DECL boss_firemawAI : public ScriptedAI
+         else
+             m_uiFlameBuffetTimer -= uiDiff;
+ 
++        // Trash Timer
++        if (m_uiTrashTimer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature, SPELL_FLAME_BUFFET) == CAST_OK)
++                m_uiTrashTimer = urand(7000, 21000);
++        }
++        else
++            m_uiTrashTimer -= uiDiff;
++
+         DoMeleeAttackIfReady();
+     }
+ };

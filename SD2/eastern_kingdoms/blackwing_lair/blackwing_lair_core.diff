@@ -1,0 +1,108 @@
+diff --git a/src/game/Spell.cpp b/src/game/Spell.cpp
+index 930ff5c..f083ace 100644
+--- a/src/game/Spell.cpp
++++ b/src/game/Spell.cpp
+
+@@ -2770,6 +2771,11 @@ void Spell::handle_immediate()
+     if(IsChanneledSpell(m_spellInfo))
+     {
+         int32 duration = GetSpellDuration(m_spellInfo);
++
++        // Use Dragon Orb
++        if (m_spellInfo->Id == 23018)
++            duration = 90000;
++
+         if (duration)
+         {
+             // Apply duration mod
+diff --git a/src/game/SpellAuras.cpp b/src/game/SpellAuras.cpp
+index ae15a61..87840bb 100644
+--- a/src/game/SpellAuras.cpp
++++ b/src/game/SpellAuras.cpp
+
+@@ -1741,6 +1746,9 @@ void Aura::HandleAuraDummy(bool apply, bool Real)
+                         if (Unit* caster = GetCaster())
+                             caster->CastSpell(caster, 13138, true, NULL, this);
+                         return;+                    case 23018:                             // use dragon orb
++                        return;
+                     case 31606:                             // Stormcrow Amulet
+                     {
+                         CreatureInfo const * cInfo = ObjectMgr::GetCreatureTemplate(17970);
+@@ -1929,6 +1937,14 @@ void Aura::HandleAuraDummy(bool apply, bool Real)
+             case 12479:                                     // Hex of Jammal'an
+                 target->CastSpell(target, 12480, true, NULL, this);
+                 return;
++            case 23018:                                     // use dragon orb
++                    if (Unit* caster = GetCaster())
++                    {
++                        if (target->isAlive())
++                            target->CastSpell(target, 23958, true);
++                        caster->RemoveAurasDueToSpell(19832);
++                    }
++                    break;
+             case 28169:                                     // Mutating Injection
+             {
+                 // Mutagen Explosion
+
+@@ -4863,6 +4878,18 @@ void Aura::HandleAuraModIncreaseEnergyPercent(bool apply, bool /*Real*/)
+ 
+ void Aura::HandleAuraModIncreaseHealthPercent(bool apply, bool /*Real*/)
+ {
++    switch(GetId())
++    {
++    case 23619:                         // burning adrenaline
++        if (!apply)
++            break;
++
++        // trigger spell at death (explosion)
++        if (GetTarget() && m_modifier.m_amount == -100)
++            GetTarget()->CastSpell(GetTarget(), 20476, true);
++        break;
++    }
++
+     GetTarget()->HandleStatModifier(UNIT_MOD_HEALTH, TOTAL_PCT, float(m_modifier.m_amount), apply);
+ }
+
+diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
+index eb2aa20..06ec8a4 100644
+--- a/src/game/SpellEffects.cpp
++++ b/src/game/SpellEffects.cpp
+
+@@ -775,6 +779,24 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
+                     m_caster->CastSpell(m_caster, spell_id, true, NULL);
+                     return;
+                 }
++                case 19869:                                 // Dragon Orb (Razorgore)
++                {
++                    if (m_caster->GetTypeId() == TYPEID_PLAYER && unitTarget)
++                    {
++                        m_caster->CastSpell(unitTarget, 19832, true);
++                        m_caster->CastSpell(m_caster, 23018, true);
++                        unitTarget->AddThreat(m_caster, 100000);
++                    }
++                    break;
++                }
++                case 19873:                                 // Destroy Egg (Razorgore)
++                {
++                    if (!gameObjTarget || !m_caster || !m_caster->isCharmed())
++                        return;
++
++                    gameObjTarget->Use(m_caster->GetCharmerOrOwner());
++                    break;
++                }
+                 case 20577:                                 // Cannibalize
+                 {
+                     if (unitTarget)
+@@ -820,6 +842,12 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
+ 
+                     return;
+                 }
++                case 23024:                                 // Fireball (Razorgore)
++                {
++                    if (unitTarget && unitTarget->isAlive())
++                        EffectInstaKill(EFFECT_INDEX_0);
++                    return;
++                }
+                 case 23074:                                 // Arcanite Dragonling
+                 {
+                     if (!m_CastItem)
