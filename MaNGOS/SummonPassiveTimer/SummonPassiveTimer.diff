@@ -1,0 +1,136 @@
+diff --git a/src/game/Creature.cpp b/src/game/Creature.cpp
+index 92e83fd..6030473 100644
+--- a/src/game/Creature.cpp
++++ b/src/game/Creature.cpp
+@@ -159,7 +159,7 @@ m_subtype(subtype), m_defaultMovementType(IDLE_MOTION_TYPE), m_equipmentId(0),
+ m_AlreadyCallAssistance(false), m_AlreadySearchedAssistance(false),
+ m_regenHealth(true), m_AI_locked(false), m_isDeadByDefault(false), m_needNotify(false),
+ m_meleeDamageSchoolMask(SPELL_SCHOOL_MASK_NORMAL),
+-m_creatureInfo(NULL), m_splineFlags(SPLINEFLAG_WALKMODE)
++m_creatureInfo(NULL), m_splineFlags(SPLINEFLAG_WALKMODE), m_uiPassivTimer(CREATURE_PASSIVE_TIME)
+ {
+     m_regenTimer = 200;
+     m_valuesCount = UNIT_END;
+@@ -359,6 +359,10 @@ bool Creature::UpdateEntry(uint32 Entry, Team team, const CreatureData *data /*=
+ 
+     SetUInt32Value(UNIT_FIELD_FLAGS, unitFlags);
+ 
++    // if not pet or totem add passiv flag
++    if (!IsPet() && !IsTotem() && !HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE))
++        SetUInt32Value(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++
+     // preserve all current dynamic flags if exist
+     uint32 dynFlags = GetUInt32Value(UNIT_DYNAMIC_FLAGS);
+     SetUInt32Value(UNIT_DYNAMIC_FLAGS, dynFlags ? dynFlags : GetCreatureInfo()->dynamicflags);
+@@ -545,6 +549,15 @@ void Creature::Update(uint32 update_diff, uint32 diff)
+         }
+         case ALIVE:
+         {
++            // remove passiv flag after a some time
++            if (HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE) && !(m_creatureInfo->unit_flags & UNIT_FLAG_PASSIVE))
++            {
++                if (m_uiPassivTimer <= update_diff)
++                    RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++                else
++                    m_uiPassivTimer -= update_diff;
++            }
++
+             if (m_isDeadByDefault)
+             {
+                 if (m_corpseDecayTimer <= update_diff)
+@@ -1540,6 +1553,11 @@ void Creature::Respawn()
+             GetMap()->GetPersistentState()->SaveCreatureRespawnTime(GetGUIDLow(), 0);
+         m_respawnTime = time(NULL);                         // respawn at next tick
+     }
++
++    // if not pet or totem add passiv flag
++    if (!IsPet() && !IsTotem() && !HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE))
++        SetUInt32Value(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++    m_uiPassivTimer = CREATURE_PASSIVE_TIME;
+ }
+ 
+ void Creature::ForcedDespawn(uint32 timeMSToDespawn)
+diff --git a/src/game/Creature.h b/src/game/Creature.h
+index b36621b..d62d66b 100644
+--- a/src/game/Creature.h
++++ b/src/game/Creature.h
+@@ -421,6 +421,8 @@ enum CreatureSubtype
+     CREATURE_SUBTYPE_TEMPORARY_SUMMON,                      // new TemporarySummon
+ };
+ 
++#define CREATURE_PASSIVE_TIME 5000
++
+ class MANGOS_DLL_SPEC Creature : public Unit
+ {
+     CreatureAI *i_AI;
+@@ -707,6 +709,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
+         uint32 m_lootGroupRecipientId;                      // group who will have rights for looting if set and exist
+ 
+         /// Timers
++        uint32 m_uiPassivTimer;                             // (msecs)timer for remove passive flag after get spawned/respawned
+         uint32 m_corpseDecayTimer;                          // (msecs)timer for death or corpse disappearance
+         time_t m_respawnTime;                               // (secs) time of next respawn
+         uint32 m_respawnDelay;                              // (secs) delay between corpse disappearance and respawning
+diff --git a/src/game/Object.cpp b/src/game/Object.cpp
+index c1bd182..b0b4918 100644
+--- a/src/game/Object.cpp
++++ b/src/game/Object.cpp
+@@ -1594,7 +1594,7 @@ void WorldObject::AddObjectToRemoveList()
+     GetMap()->AddObjectToRemoveList(this);
+ }
+ 
+-Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject)
++Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject, uint32 passivtime)
+ {
+     TemporarySummon* pCreature = new TemporarySummon(GetObjectGuid());
+ 
+@@ -1618,7 +1618,7 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
+     // Active state set before added to map
+     pCreature->SetActiveObjectState(asActiveObject);
+ 
+-    pCreature->Summon(spwtype, despwtime);
++    pCreature->Summon(spwtype, despwtime, passivtime);
+ 
+     if(GetTypeId()==TYPEID_UNIT && ((Creature*)this)->AI())
+         ((Creature*)this)->AI()->JustSummoned(pCreature);
+diff --git a/src/game/Object.h b/src/game/Object.h
+index a515723..c0bb910 100644
+--- a/src/game/Object.h
++++ b/src/game/Object.h
+@@ -569,7 +569,7 @@ class MANGOS_DLL_SPEC WorldObject : public Object
+         void RemoveFromClientUpdateList();
+         void BuildUpdateData(UpdateDataMapType &);
+ 
+-        Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false);
++        Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false, uint32 passivtime = 2500);
+ 
+         GameObject* SummonGameObject(uint32 id, float x, float y, float z, float ang, TempSummonType spwtype, uint32 despwtime = 1000 , float  rotation0 = 0, float rotation1 = 0, float rotation2 = 0, float rotation3 = 0, uint32 animprogress = 100, GOState state = GO_STATE_READY);
+ 
+diff --git a/src/game/TemporarySummon.cpp b/src/game/TemporarySummon.cpp
+index a93c836..050dcf8 100644
+--- a/src/game/TemporarySummon.cpp
++++ b/src/game/TemporarySummon.cpp
+@@ -149,8 +149,9 @@ void TemporarySummon::Update( uint32 update_diff,  uint32 diff )
+     Creature::Update( update_diff, diff );
+ }
+ 
+-void TemporarySummon::Summon(TempSummonType type, uint32 lifetime)
++void TemporarySummon::Summon(TempSummonType type, uint32 lifetime, uint32 passivTime)
+ {
++    m_uiPassivTimer = passivTime;
+     m_type = type;
+     m_timer = lifetime;
+     m_lifetime = lifetime;
+diff --git a/src/game/TemporarySummon.h b/src/game/TemporarySummon.h
+index ede581b..61221a9 100644
+--- a/src/game/TemporarySummon.h
++++ b/src/game/TemporarySummon.h
+@@ -28,7 +28,7 @@ class TemporarySummon : public Creature
+         explicit TemporarySummon(ObjectGuid summoner = ObjectGuid());
+         virtual ~TemporarySummon(){};
+         void Update(uint32 update_diff, uint32 time);
+-        void Summon(TempSummonType type, uint32 lifetime);
++        void Summon(TempSummonType type, uint32 lifetime, uint32 passivTime);
+         void MANGOS_DLL_SPEC UnSummon();
+         void SaveToDB();
+         ObjectGuid const& GetSummonerGuid() const { return m_summoner ; }

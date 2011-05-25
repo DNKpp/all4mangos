@@ -1,0 +1,57 @@
+diff --git a/src/game/InstanceData.cpp b/src/game/InstanceData.cpp
+index 8e3b7d5..0bd3bac 100644
+--- a/src/game/InstanceData.cpp
++++ b/src/game/InstanceData.cpp
+@@ -17,7 +17,6 @@
+  */
+ 
+ #include "InstanceData.h"
+-#include "Database/DatabaseEnv.h"
+ #include "Map.h"
+ 
+ void InstanceData::SaveToDB()
+diff --git a/src/game/Map.cpp b/src/game/Map.cpp
+index 2b7dee2..add2229 100644
+--- a/src/game/Map.cpp
++++ b/src/game/Map.cpp
+@@ -36,6 +36,7 @@
+ #include "MapPersistentStateMgr.h"
+ #include "VMapFactory.h"
+ #include "BattleGroundMgr.h"
++#include "Database/DatabaseEnv.h"
+ 
+ #define MAX_GRID_LOAD_TIME      50
+ 
+@@ -3015,3 +3016,11 @@ uint32 Map::GenerateLocalLowGuid(HighGuid guidhigh)
+     MANGOS_ASSERT(0);
+     return 0;
+ }
++
++QueryResult* Map::GetMapData(uint32 MapID)
++{
++    if (Instanceable())
++        return NULL;
++    QueryResult* result;
++    return result = CharacterDatabase.PQuery("SELECT data FROM world WHERE map = '%u'", MapID);
++}
+\ No newline at end of file
+diff --git a/src/game/Map.h b/src/game/Map.h
+index 8453d8c..6490da1 100644
+--- a/src/game/Map.h
++++ b/src/game/Map.h
+@@ -52,6 +52,7 @@ struct ScriptInfo;
+ struct ScriptAction;
+ class BattleGround;
+ class GridMap;
++class QueryResult;
+ 
+ // GCC have alternative #pragma pack(N) syntax and old gcc version not support pack(push,N), also any gcc version not support it at some platform
+ #if defined( __GNUC__ )
+@@ -252,6 +253,7 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
+         void CreateInstanceData(bool load);
+         InstanceData* GetInstanceData() { return i_data; }
+         uint32 GetScriptId() const { return i_script_id; }
++        QueryResult* GetMapData(uint32 MapID);
+     private:
+         void LoadMapAndVMap(int gx, int gy);
+ 
