@@ -1,8 +1,8 @@
 diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
-index de175eb..9fbbe93 100644
+index de175eb..13bb3b6 100644
 --- a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
-@@ -16,37 +16,137 @@
+@@ -16,37 +16,88 @@
  
  /* ScriptData
  SDName: boss_the_lurker_below
@@ -60,86 +60,37 @@ index de175eb..9fbbe93 100644
  
 -// TODO This boss should infact be a Scripted_NoMovementAI, but selecting only melee targets is not supported yet, change when implemented
 -struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
-+//add move positions
-+#define Add1X     64.256935f
-+#define    Add1Y     -379.475189f
-+#define    Add1Z     -19.721571f
-+#define    Add1O     4.046904f
-+
-+#define    Add2X     77.815926f
-+#define    Add2Y     -384.468445f
-+#define    Add2Z     -19.721546f
-+#define    Add2O     3.929094f
-+
-+#define Add3X     0.737525f
-+#define    Add3Y     -458.400604f
-+#define    Add3Z     -19.793449f
-+#define    Add3O     0.873893f
-+
-+#define    Add4X     17.234730f
-+#define    Add4Y     -459.244934f
-+#define    Add4Z     -19.793390f
-+#define    Add4O     1.140931f
-+
-+#define Add5X     50.464146f
-+#define    Add5Y     -457.987854f
-+#define    Add5Z     -19.793457f
-+#define    Add5O     1.726054f
-+
-+#define    Add6X     63.095200f
-+#define    Add6Y     -457.050232f
-+#define    Add6Z     -19.793457f
-+#define    Add6O     1.816375f
-+
-+#define Add7X     57.31508f
-+#define    Add7Y     -437.395996f
-+#define    Add7Z     -18.430243f
-+#define    Add7O     2.318715f
-+
-+#define    Add8X     46.370411f
-+#define    Add8Y     -392.387909f
-+#define    Add8Z     -18.929656f
-+#define    Add8O     4.220950f
-+
-+#define Add9X     14.353722f
-+#define    Add9Y     -429.366577f
-+#define    Add9Z     -19.436771f
-+#define    Add9O     0.553144f
-+
-+//spawn positions
-+#define Spawn1X     94.207947f
-+#define    Spawn1Y     -349.271820f
-+#define    Spawn1Z     -21.345373f
-+#define    Spawn1O     3.997900f
-+
-+#define Spawn2X     -5.638793f
-+#define    Spawn2Y     -488.657745f
-+#define    Spawn2Z     -21.478975f
-+#define    Spawn2O     1.036163f
-+
-+#define Spawn3X     72.085342f
-+#define    Spawn3Y     -496.483643f
-+#define    Spawn3Z     -21.320179f
-+#define    Spawn3O     1.963718f
-+
-+#define Spawn4X     94.860718f
-+#define    Spawn4Y     -444.516510f
-+#define    Spawn4Z     -21.461153f
-+#define    Spawn4O     2.950962f
-+
-+#define Spawn5X     51.777084f
-+#define    Spawn5Y     -358.601471f
-+#define    Spawn5Z     -21.463102f
-+#define    Spawn5O     4.723604f
-+
-+#define Spawn6X     -21.756878f
-+#define    Spawn6Y     -454.960480f
-+#define    Spawn6Z     -21.476360f
-+#define    Spawn6O     0.566998f
-+
-+struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public Scripted_NoMovementAI
++struct sWaypoint
  {
 -    boss_the_lurker_belowAI(Creature* pCreature) : ScriptedAI(pCreature)
++    float m_fX, m_fY, m_fZ, m_fO;
++};
++
++sWaypoint sAddMoveLoc[9] =
++{
++    {64.256935f, -379.475189f, -19.721571f, 4.046904f},
++    {77.815926f, -384.468445f, -19.721546f, 3.929094f},
++    {0.737525f, -458.400604f, -19.793449f, 0.873893f},
++    {17.234730f, -459.244934f, -19.793390f, 1.140931f},
++    {50.464146f, -457.987854f, -19.793457f, 1.726054f},
++    {63.095200f, -457.050232f, -19.793457f, 1.816375f},
++    {57.31508f, -437.395996f, -18.430243f, 2.318715f},
++    {46.370411f, -392.387909f, -18.929656f, 4.220950f},
++    {14.353722f, -429.366577f, -19.436771f, 0.553144f}
++};
++
++sWaypoint sAddSummonLoc[6] =
++{
++    {94.207947f, -349.271820f, -21.345373f, 3.997900f},
++    {-5.638793f, -488.657745f, -21.478975f, 1.036163f},
++    {72.085342f, -496.483643f, -21.320179f, 1.963718f},
++    {94.860718f, -444.516510f, -21.461153f, 2.950962f},
++    {51.777084f, -358.601471f, -21.463102f, 4.723604f},
++    {-21.756878f, -454.960480f, -21.476360f, 0.566998f}
++};
++
++struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public Scripted_NoMovementAI
++{
 +    boss_the_lurker_belowAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
      {
          m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
@@ -151,7 +102,7 @@ index de175eb..9fbbe93 100644
          Reset();
      }
  
-@@ -56,13 +156,77 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+@@ -56,13 +107,80 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
  
      uint32 m_uiWhirlTimer;
      uint32 m_uiGeyserTimer;
@@ -159,7 +110,6 @@ index de175eb..9fbbe93 100644
 +    uint32 m_uiWaterBolt_Timer;
 +    uint32 m_uiSubmerge_Timer;
 +    uint32 m_uiFight_Timer;
-+    uint32 m_uiAddsAttack_Timer;
 +
 +    bool m_bSpoutEmote;
 +
@@ -182,7 +132,6 @@ index de175eb..9fbbe93 100644
 +        m_uiGeyserTimer             = urand(5000, 18000);
 +        m_uiSpout_Timer             = 45000;
 +        m_uiWaterBolt_Timer         = 1500;
-+        m_uiAddsAttack_Timer        = 900000;        //not the real time
 +        m_uiSubmerge_Timer          = 900000;        //not the real time
 +        m_uiFight_Timer             = 900000;        //not the real time
 +
@@ -192,6 +141,11 @@ index de175eb..9fbbe93 100644
 +        m_uiTimeRemain              = 0;
 +        m_OriPerSec                 = 0;
 +        m_Orientation               = 0;
++    }
++
++    void JustExceededSpawnDelay(Creature *pCreature)
++    {
++        AttackNearestTarget(pCreature);
 +    }
 +
 +    void AttackNearestTarget(Creature* pCreature)
@@ -231,7 +185,7 @@ index de175eb..9fbbe93 100644
      }
  
      void JustReachedHome()
-@@ -70,7 +234,10 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+@@ -70,7 +188,10 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
          if (m_pInstance)
              m_pInstance->SetData(TYPE_THELURKER_EVENT, NOT_STARTED);
  
@@ -243,24 +197,56 @@ index de175eb..9fbbe93 100644
      }
  
      void JustDied(Unit* pVictim)
-@@ -79,55 +246,421 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+@@ -79,55 +200,374 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
              m_pInstance->SetData(TYPE_THELURKER_EVENT, DONE);
      }
  
 +    //sets the variables to rotate m_creature
 +    void SetRotation(uint32 uiTime, float Orientation, bool bClockwise)
 +    {
-+        m_OriPerSec        = Orientation * 1000 / uiTime;
-+        m_uiTimeRemain    = uiTime;
++        m_OriPerSec     = Orientation * 1000 / uiTime;
++        m_uiTimeRemain  = uiTime;
 +        m_bClockwise    = bClockwise;
-+        m_Orientation = m_creature->GetOrientation();
++        m_Orientation   = m_creature->GetOrientation();
 +    }
 +
-+    //spawns the naga adds
++    //spawn the naga adds
 +    void SpawnAdds()
 +    {
-+        for (int i = 0; i <= 8; i++)
++        for (int i = 0; i < 9; i++)
 +        {
++            bool bSummonAmbusher = true;
++            int j = 0;
++            // set summon point
++            switch(i)
++            {
++            case 0:
++            case 1:
++                j = 0;
++                break;
++            case 2:
++            case 3:
++                j = 1;
++                break;
++            case 4:
++            case 5:
++                j = 2;
++                break;
++            case 6:
++                j = 3;
++                break;
++            case 7:
++                j = 4;
++                break;
++            case 8:
++                j= 5;
++                break;
++            }
++            // set summon creature (true ambusher, false guardian)
++            if (i >= 6)
++                bSummonAmbusher = false;
++
++            // check if creature is alive oder exist
 +            Creature *pCreature = NULL;
 +            if (pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
 +            {
@@ -269,75 +255,12 @@ index de175eb..9fbbe93 100644
 +                else
 +                    pCreature->ForcedDespawn();
 +            }
-+            switch(i)
-+            {
-+            case 0:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
-+                                    Spawn1X, Spawn1Y, Spawn1Z, Spawn1O,
-+                                    TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add1X, Add1Y, Add1Z, 5000);
-+                    break;
-+            case 1:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
-+                                    Spawn1X, Spawn1Y, Spawn1Z, Spawn1O,
-+                                    TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add2X, Add2Y, Add2Z, 5000);
-+                    break;
-+            case 2:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
-+                                    Spawn2X, Spawn2Y, Spawn2Z, Spawn2O,
-+                                    TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add3X, Add3Y, Add3Z, 5000);
-+                    break;
-+            case 3:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
-+                                    Spawn2X, Spawn2Y, Spawn2Z, Spawn2O,
-+                                    TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add4X, Add4Y, Add4Z, 5000);
-+                    break;
-+            case 4:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
-+                                    Spawn3X, Spawn3Y, Spawn3Z, Spawn3O,
-+                                    TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add5X, Add5Y, Add5Z, 5000);
-+                    break;
-+            case 5:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_AMBUSHER,
-+                                    Spawn3X, Spawn3Y, Spawn3Z, Spawn3O,
-+                                    TEMPSUMMON_CORPSE_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add6X, Add6Y, Add6Z, 5000);
-+                    break;
-+            case 6:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_GUARDIAN,
-+                                    Spawn4X, Spawn4Y, Spawn4Z, Spawn4O,
-+                                    TEMPSUMMON_DEAD_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add7X, Add7Y, Add7Z, 5000);
-+                    break;
-+            case 7:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_GUARDIAN,
-+                                    Spawn5X, Spawn5Y, Spawn5Z, Spawn5O,
-+                                    TEMPSUMMON_DEAD_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add8X, Add8Y, Add8Z, 5000);
-+                    break;
-+            case 8:
-+                    m_uiAdds[i] = m_creature->SummonCreature(CREATURE_COILFANG_GUARDIAN,
-+                                    Spawn6X, Spawn6Y, Spawn6Z, Spawn6O, 
-+                                    TEMPSUMMON_DEAD_DESPAWN, 0)->GetGUID();
-+                    pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]);
-+                    pCreature->MonsterMove(Add9X, Add9Y, Add9Z, 5000);
-+                    break;
-+            }
-+            pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++            // summon and set to move to their own location
++            pCreature = m_creature->SummonCreature(bSummonAmbusher ? CREATURE_COILFANG_AMBUSHER : CREATURE_COILFANG_GUARDIAN, 
++                sAddSummonLoc[j].m_fX, sAddSummonLoc[j].m_fY, sAddSummonLoc[j].m_fZ, sAddSummonLoc[j].m_fO, TEMPSUMMON_CORPSE_DESPAWN, 0, false, 5000);
++            m_uiAdds[i] = pCreature->GetGUID();
++            pCreature->MonsterMove(sAddMoveLoc[i].m_fX, sAddMoveLoc[i].m_fY, sAddMoveLoc[i].m_fZ, 5000);
 +        }
-+        m_uiAddsAttack_Timer = 5000;
 +    }
 +
 +    //manual despawn
@@ -489,22 +412,6 @@ index de175eb..9fbbe93 100644
 +                }
 +                else
 +                    m_uiSubmerge_Timer -= uiDiff;
-+
-+                // adds attack after a few seconds by them self
-+                if (m_uiAddsAttack_Timer <= uiDiff)
-+                {
-+                    for (int i = 0; i <= 8; i++)
-+                    {
-+                        if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
-+                        {
-+                            if (pCreature->isAlive())
-+                                AttackNearestTarget(pCreature);
-+                        }
-+                    }
-+                    m_uiAddsAttack_Timer = 900000;  //not the real time
-+                }
-+                else
-+                    m_uiAddsAttack_Timer -= uiDiff;
 +                break;
 +
 +            case PHASE_EMERGEING:
@@ -672,7 +579,7 @@ index de175eb..9fbbe93 100644
                  pInstance->SetData(TYPE_THELURKER_EVENT, IN_PROGRESS);
                  return true;
              }
-@@ -149,4 +682,14 @@ void AddSC_boss_the_lurker_below()
+@@ -149,4 +589,14 @@ void AddSC_boss_the_lurker_below()
      pNewScript->Name = "go_strange_pool";
      pNewScript->pGOUse = &GOUse_go_strange_pool;
      pNewScript->RegisterSelf();

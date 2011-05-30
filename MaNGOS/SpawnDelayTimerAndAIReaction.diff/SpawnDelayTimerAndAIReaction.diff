@@ -1,5 +1,5 @@
 diff --git a/src/game/Creature.cpp b/src/game/Creature.cpp
-index 92e83fd..6030473 100644
+index 92e83fd..c032cd9 100644
 --- a/src/game/Creature.cpp
 +++ b/src/game/Creature.cpp
 @@ -159,7 +159,7 @@ m_subtype(subtype), m_defaultMovementType(IDLE_MOTION_TYPE), m_equipmentId(0),
@@ -22,7 +22,7 @@ index 92e83fd..6030473 100644
      // preserve all current dynamic flags if exist
      uint32 dynFlags = GetUInt32Value(UNIT_DYNAMIC_FLAGS);
      SetUInt32Value(UNIT_DYNAMIC_FLAGS, dynFlags ? dynFlags : GetCreatureInfo()->dynamicflags);
-@@ -545,6 +549,15 @@ void Creature::Update(uint32 update_diff, uint32 diff)
+@@ -545,6 +549,18 @@ void Creature::Update(uint32 update_diff, uint32 diff)
          }
          case ALIVE:
          {
@@ -30,7 +30,10 @@ index 92e83fd..6030473 100644
 +            if (HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE) && !(m_creatureInfo->unit_flags & UNIT_FLAG_PASSIVE))
 +            {
 +                if (m_uiPassivTimer <= update_diff)
++                {
 +                    RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
++                    SpawnDelayExceeded();
++                }
 +                else
 +                    m_uiPassivTimer -= update_diff;
 +            }
@@ -38,7 +41,7 @@ index 92e83fd..6030473 100644
              if (m_isDeadByDefault)
              {
                  if (m_corpseDecayTimer <= update_diff)
-@@ -1540,6 +1553,11 @@ void Creature::Respawn()
+@@ -1540,6 +1556,11 @@ void Creature::Respawn()
              GetMap()->GetPersistentState()->SaveCreatureRespawnTime(GetGUIDLow(), 0);
          m_respawnTime = time(NULL);                         // respawn at next tick
      }
@@ -51,7 +54,7 @@ index 92e83fd..6030473 100644
  
  void Creature::ForcedDespawn(uint32 timeMSToDespawn)
 diff --git a/src/game/Creature.h b/src/game/Creature.h
-index b36621b..d62d66b 100644
+index b36621b..01168cd 100644
 --- a/src/game/Creature.h
 +++ b/src/game/Creature.h
 @@ -421,6 +421,8 @@ enum CreatureSubtype
@@ -63,7 +66,15 @@ index b36621b..d62d66b 100644
  class MANGOS_DLL_SPEC Creature : public Unit
  {
      CreatureAI *i_AI;
-@@ -707,6 +709,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
+@@ -686,6 +688,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
+         void SetVirtualItem(VirtualItemSlot slot, uint32 item_id);
+         void SetVirtualItemRaw(VirtualItemSlot slot, uint32 display_id, uint32 info0, uint32 info1);
+     protected:
++        virtual void SpawnDelayExceeded() {}
+         bool CreateFromProto(uint32 guidlow,uint32 Entry, Team team, const CreatureData *data = NULL, GameEventCreatureData const* eventData =NULL);
+         bool InitEntry(uint32 entry, const CreatureData* data = NULL, GameEventCreatureData const* eventData = NULL);
+         void RelocationNotify();
+@@ -707,6 +710,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
          uint32 m_lootGroupRecipientId;                      // group who will have rights for looting if set and exist
  
          /// Timers
@@ -71,43 +82,22 @@ index b36621b..d62d66b 100644
          uint32 m_corpseDecayTimer;                          // (msecs)timer for death or corpse disappearance
          time_t m_respawnTime;                               // (secs) time of next respawn
          uint32 m_respawnDelay;                              // (secs) delay between corpse disappearance and respawning
-diff --git a/src/game/Object.cpp b/src/game/Object.cpp
-index c1bd182..b0b4918 100644
---- a/src/game/Object.cpp
-+++ b/src/game/Object.cpp
-@@ -1594,7 +1594,7 @@ void WorldObject::AddObjectToRemoveList()
-     GetMap()->AddObjectToRemoveList(this);
- }
+diff --git a/src/game/CreatureAI.h b/src/game/CreatureAI.h
+index c40e1e6..127e50e 100644
+--- a/src/game/CreatureAI.h
++++ b/src/game/CreatureAI.h
+@@ -103,6 +103,9 @@ class MANGOS_DLL_SPEC CreatureAI
+         // Called when the creature summon successfully other creature
+         virtual void JustSummoned(Creature* ) {}
  
--Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject)
-+Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject, uint32 passivtime)
- {
-     TemporarySummon* pCreature = new TemporarySummon(GetObjectGuid());
- 
-@@ -1618,7 +1618,7 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
-     // Active state set before added to map
-     pCreature->SetActiveObjectState(asActiveObject);
- 
--    pCreature->Summon(spwtype, despwtime);
-+    pCreature->Summon(spwtype, despwtime, passivtime);
- 
-     if(GetTypeId()==TYPEID_UNIT && ((Creature*)this)->AI())
-         ((Creature*)this)->AI()->JustSummoned(pCreature);
-diff --git a/src/game/Object.h b/src/game/Object.h
-index a515723..c0bb910 100644
---- a/src/game/Object.h
-+++ b/src/game/Object.h
-@@ -569,7 +569,7 @@ class MANGOS_DLL_SPEC WorldObject : public Object
-         void RemoveFromClientUpdateList();
-         void BuildUpdateData(UpdateDataMapType &);
- 
--        Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false);
-+        Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false, uint32 passivtime = 2500);
- 
-         GameObject* SummonGameObject(uint32 id, float x, float y, float z, float ang, TempSummonType spwtype, uint32 despwtime = 1000 , float  rotation0 = 0, float rotation1 = 0, float rotation2 = 0, float rotation3 = 0, uint32 animprogress = 100, GOState state = GO_STATE_READY);
++        // Called when the summoned creature had the spawn/respawn delay
++        virtual void JustExceededSpawnDelay(Creature *) {}
++
+         // Called when the creature summon despawn
+         virtual void SummonedCreatureDespawn(Creature* /*unit*/) {}
  
 diff --git a/src/game/TemporarySummon.cpp b/src/game/TemporarySummon.cpp
-index a93c836..050dcf8 100644
+index a93c836..3a977c2 100644
 --- a/src/game/TemporarySummon.cpp
 +++ b/src/game/TemporarySummon.cpp
 @@ -149,8 +149,9 @@ void TemporarySummon::Update( uint32 update_diff,  uint32 diff )
@@ -121,11 +111,22 @@ index a93c836..050dcf8 100644
      m_type = type;
      m_timer = lifetime;
      m_lifetime = lifetime;
+@@ -174,3 +175,10 @@ void TemporarySummon::UnSummon()
+ void TemporarySummon::SaveToDB()
+ {
+ }
++
++void TemporarySummon::SpawnDelayExceeded()
++{
++    Unit *pSummoner = GetMap()->GetUnit(m_summoner);
++    if(pSummoner && pSummoner->GetTypeId()==TYPEID_UNIT && ((Creature*)pSummoner)->AI())
++        ((Creature*)pSummoner)->AI()->JustExceededSpawnDelay(this);
++}
 diff --git a/src/game/TemporarySummon.h b/src/game/TemporarySummon.h
-index ede581b..61221a9 100644
+index ede581b..81ea25a 100644
 --- a/src/game/TemporarySummon.h
 +++ b/src/game/TemporarySummon.h
-@@ -28,7 +28,7 @@ class TemporarySummon : public Creature
+@@ -28,11 +28,13 @@ class TemporarySummon : public Creature
          explicit TemporarySummon(ObjectGuid summoner = ObjectGuid());
          virtual ~TemporarySummon(){};
          void Update(uint32 update_diff, uint32 time);
@@ -134,3 +135,9 @@ index ede581b..61221a9 100644
          void MANGOS_DLL_SPEC UnSummon();
          void SaveToDB();
          ObjectGuid const& GetSummonerGuid() const { return m_summoner ; }
+         Unit* GetSummoner() const { return ObjectAccessor::GetUnit(*this, m_summoner); }
++    protected:
++        void SpawnDelayExceeded();
+     private:
+         TempSummonType m_type;
+         uint32 m_timer;
