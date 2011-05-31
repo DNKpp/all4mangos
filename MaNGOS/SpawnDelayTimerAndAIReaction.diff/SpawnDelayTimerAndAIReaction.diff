@@ -96,6 +96,41 @@ index c40e1e6..127e50e 100644
          // Called when the creature summon despawn
          virtual void SummonedCreatureDespawn(Creature* /*unit*/) {}
  
+diff --git a/src/game/Object.cpp b/src/game/Object.cpp
+index 4cc8025..1d4489f 100644
+--- a/src/game/Object.cpp
++++ b/src/game/Object.cpp
+@@ -1593,7 +1593,7 @@ void WorldObject::AddObjectToRemoveList()
+     GetMap()->AddObjectToRemoveList(this);
+ }
+ 
+-Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject)
++Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject, uint32 passivtime)
+ {
+     TemporarySummon* pCreature = new TemporarySummon(GetObjectGuid());
+ 
+@@ -1617,7 +1617,7 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
+     // Active state set before added to map
+     pCreature->SetActiveObjectState(asActiveObject);
+ 
+-    pCreature->Summon(spwtype, despwtime);
++    pCreature->Summon(spwtype, despwtime, passivtime);
+ 
+     if(GetTypeId()==TYPEID_UNIT && ((Creature*)this)->AI())
+         ((Creature*)this)->AI()->JustSummoned(pCreature);
+diff --git a/src/game/Object.h b/src/game/Object.h
+index c23f161..c536722 100644
+--- a/src/game/Object.h
++++ b/src/game/Object.h
+@@ -559,7 +559,7 @@ class MANGOS_DLL_SPEC WorldObject : public Object
+         void RemoveFromClientUpdateList();
+         void BuildUpdateData(UpdateDataMapType &);
+ 
+-        Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false);
++        Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false, uint32 passivtime = 2500);
+ 
+         bool isActiveObject() const { return m_isActiveObject || m_viewPoint.hasViewers(); }
+ 
 diff --git a/src/game/TemporarySummon.cpp b/src/game/TemporarySummon.cpp
 index a93c836..3a977c2 100644
 --- a/src/game/TemporarySummon.cpp
