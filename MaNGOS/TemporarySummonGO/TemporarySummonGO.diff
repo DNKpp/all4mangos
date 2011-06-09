@@ -94,7 +94,7 @@ index c23f161..a515723 100644
 
 diff --git a/src/game/TemporarySummonGO.cpp b/src/game/TemporarySummonGO.cpp
 new file mode 100644
---- /dev/null
+--- a/dev/null
 +++ b/src/game/TemporarySummonGO.cpp
 @@ -0,0 +1,69 @@
 +/*
@@ -170,7 +170,7 @@ new file mode 100644
 diff --git a/src/game/TemporarySummonGO.h b/src/game/TemporarySummonGO.h
 
 new file mode 100644
---- /dev/null
+--- a/dev/null
 +++ b/src/game/TemporarySummonGO.h
 @@ -0,0 +1,42 @@
 +/*

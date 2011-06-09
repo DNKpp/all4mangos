@@ -1,5 +1,5 @@
 diff --git a/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp b/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
-index a3a4faa..37c1f95 100644
+index a3a4faa..1743d60 100644
 --- a/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
 +++ b/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
 @@ -16,8 +16,8 @@
@@ -42,7 +42,7 @@ index a3a4faa..37c1f95 100644
  };
  
  struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
-@@ -64,39 +69,143 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -64,11 +69,25 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
      boss_ragnarosAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
      {
          m_pInstance = (instance_molten_core*)pCreature->GetInstanceData();
@@ -68,10 +68,9 @@ index a3a4faa..37c1f95 100644
      uint32 m_uiWrathOfRagnarosTimer;
      uint32 m_uiMagmaBlastTimer;
      uint32 m_uiElementalFireTimer;
-     uint32 m_uiSubmergeTimer;
+@@ -76,13 +95,22 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
      uint32 m_uiAttackTimer;
      uint32 m_uiAddCount;
-+    uint32 m_uiAddFightStartTimer;
  
 +    uint64 m_uiEruptionTrigger;
 +
@@ -93,10 +92,7 @@ index a3a4faa..37c1f95 100644
          m_uiMagmaBlastTimer = 2000;
          m_uiElementalFireTimer = 3000;
          m_uiSubmergeTimer = 3*MINUTE*IN_MILLISECONDS;
-         m_uiAttackTimer = 90*IN_MILLISECONDS;
-         m_uiAddCount = 0;
-+        m_uiAddFightStartTimer = 3000;
- 
+@@ -92,11 +120,96 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          m_bHasYelledMagmaBurst = false;
          m_bHasSubmergedOnce = false;
          m_bIsSubmerged = false;
@@ -116,6 +112,12 @@ index a3a4faa..37c1f95 100644
 +           return DoCastSpellInsteadMeleeAttack( uiDiff );
 +
 +        return false;
++    }
++
++    void JustExceededSpawnDelay(Creature *pCreature)
++    {
++        if (pCreature->GetEntry() == NPC_SON_OF_FLAME)
++            AttackNearestTarget(pCreature);
 +    }
 +
 +    void AttackNearestTarget(Creature* pCreature)
@@ -188,7 +190,7 @@ index a3a4faa..37c1f95 100644
              return;
  
          DoScriptText(SAY_KILL, m_creature);
-@@ -110,6 +219,9 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -110,6 +223,9 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
  
      void Aggro(Unit* pWho)
      {
@@ -198,7 +200,7 @@ index a3a4faa..37c1f95 100644
          if (m_pInstance)
              m_pInstance->SetData(TYPE_RAGNAROS, IN_PROGRESS);
  
-@@ -117,7 +229,7 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -117,7 +233,7 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          DoCastSpellIfCan(m_creature, SPELL_MELT_WEAPON, CAST_TRIGGERED);
      }
  
@@ -207,7 +209,7 @@ index a3a4faa..37c1f95 100644
      {
          if (m_pInstance)
              m_pInstance->SetData(TYPE_RAGNAROS, FAIL);
-@@ -125,6 +237,8 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -125,6 +241,8 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          // Reset flag if had been submerged
          if (m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
              m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
@@ -216,7 +218,7 @@ index a3a4faa..37c1f95 100644
      }
  
      void SummonedCreatureJustDied(Creature* pSummmoned)
-@@ -151,14 +265,63 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -151,8 +269,43 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          }
      }
  
@@ -260,27 +262,7 @@ index a3a4faa..37c1f95 100644
          // Return since we have no target
          if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
              return;
- 
-         if (m_bIsSubmerged)
-         {
-+            // Timer to check when Adds should attack
-+            if (m_uiAddFightStartTimer < uiDiff)
-+            {
-+                for(uint8 i = 0; i < MAX_ADDS_IN_SUBMERGE; ++i)
-+                {
-+                    if (Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiAdds[i]))
-+                        AttackNearestTarget(pCreature);
-+                }
-+                m_uiAddFightStartTimer = 3000;
-+                m_bJustSpawnedAdds = false;
-+            }
-+            else
-+                m_uiAddFightStartTimer -= uiDiff;
-+
-             // Timer to check when Ragnaros should emerge (is set to soonish, when last add is killed)
-             if (m_uiAttackTimer < uiDiff)
-             {
-@@ -176,21 +339,52 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -176,21 +329,52 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
              return;
          }
  
@@ -338,7 +320,7 @@ index a3a4faa..37c1f95 100644
          if (m_uiElementalFireTimer < uiDiff)
          {
              if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_ELEMENTAL_FIRE) == CAST_OK)
-@@ -199,6 +393,39 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -199,6 +383,39 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          else
              m_uiElementalFireTimer -= uiDiff;
  
@@ -378,7 +360,7 @@ index a3a4faa..37c1f95 100644
          // Submerge Timer
          if (m_uiSubmergeTimer < uiDiff)
          {
-@@ -219,8 +446,10 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -219,8 +436,10 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
              float fX, fY, fZ;
              for(uint8 i = 0; i < MAX_ADDS_IN_SUBMERGE; ++i)
              {
@@ -391,7 +373,7 @@ index a3a4faa..37c1f95 100644
              }
  
              return;
-@@ -228,43 +457,11 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -228,43 +447,11 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          else
              m_uiSubmergeTimer -= uiDiff;
  
