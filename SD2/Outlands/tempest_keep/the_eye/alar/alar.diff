@@ -24,7 +24,7 @@ diff --git a/scripts/outland/tempest_keep/the_eye/boss_alar.cpp b/scripts/outlan
 new file mode 100644
 --- /dev/null
 +++ b/scripts/outland/tempest_keep/the_eye/boss_alar.cpp
-@@ -0,0 +1,623 @@
+@@ -0,0 +1,603 @@
 +/* Copyright (C) 2006 - 2011 ScriptDev2 <http://www.scriptdev2.com/>
 + * This program is free software; you can redistribute it and/or modify
 + * it under the terms of the GNU General Public License as published by
@@ -72,29 +72,29 @@ new file mode 100644
 +enum
 +{
 +    // spells all phases
-+    SPELL_FLAME_BUFFET = 34121,
++    SPELL_FLAME_BUFFET      = 34121,
 +
 +    // spells phase one
-+    SPELL_FLAME_QUILLS  = 34229,
-+    SPELL_REBIRTH_HEAL  = 34342,
-+    SPELL_EMBER_BLAST   = 34341,
++    SPELL_FLAME_QUILLS      = 34229,
++    SPELL_REBIRTH_HEAL      = 34342,
++    SPELL_EMBER_BLAST       = 34341,
 +
 +    // spells phase two
-+    SPELL_MELT_ARMOR    = 35410,
-+    SPELL_CHARGE        = 35412,
-+    SPELL_REBIRTH       = 35369,
-+    SPELL_FLAME_PATCH   = 35380,
-+    SPELL_DIVE_BOMB_VISUAL = 35367,
-+    SPELL_DIVE_BOMB     = 35181,
-+    SPELL_ENRAGE        = 26662,
++    SPELL_MELT_ARMOR        = 35410,
++    SPELL_CHARGE            = 35412,
++    SPELL_REBIRTH           = 35369,
++    SPELL_FLAME_PATCH       = 35380,
++    SPELL_DIVE_BOMB_VISUAL  = 35367,
++    SPELL_DIVE_BOMB         = 35181,
++    SPELL_ENRAGE            = 26662,
 +
-+    TIME_AT_PLATTFORME  = 30000,
-+    MAX_PLATTFORMES     = 5,
++    TIME_AT_PLATTFORME      = 30000,
++    MAX_PLATTFORMES         = 5,
 +
-+    NPC_EMBER_OF_ALAR   = 19551,
-+    NPC_FLAME_PATCH_ALAR = 20602,
++    NPC_EMBER_OF_ALAR       = 19551,
++    NPC_FLAME_PATCH_ALAR    = 20602,
 +
-+    MODEL_INVISIBLE     = 17612,
++    MODEL_INVISIBLE         = 17612,
 +
 +};
 +
@@ -193,11 +193,48 @@ new file mode 100644
 +        m_bCastFlameQuills  = false;
 +    }
 +
++    void AttackNearestTarget(Creature* pCreature)
++    {
++        float minRange = VISIBLE_RANGE;
++        float range;
++        Player* target = NULL;
++
++        Map::PlayerList const& players = m_creature->GetMap()->GetPlayers();
++        for(Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
++        {
++            if (Player* i_pl = itr->getSource())
++            {
++                if (i_pl->isTargetableForAttack())
++                {
++                    range = i_pl->GetDistance(pCreature);
++                    if (range < minRange)
++                    {
++                        minRange = range;
++                        target = i_pl;
++                    }
++                }
++            }
++        }
++
++        if (!target)
++        {
++            m_creature->ForcedDespawn();
++            return;
++        }
++        pCreature->AI()->AttackStart(target);
++    }
++
 +    void JustDied(Unit *pWho)
 +    {
 +        m_creature->FallGround();
 +        UnsummonAllFlamePatches();
 +        m_pInstance->SetData(TYPE_ALAR, DONE);
++    }
++
++    void JustExceededSpawnDelay(Creature *pCreature)
++    {
++        if (pCreature->GetEntry() == NPC_EMBER_OF_ALAR)
++            AttackNearestTarget(pCreature);
 +    }
 +
 +    void UnsummonAllFlamePatches()
@@ -250,12 +287,12 @@ new file mode 100644
 +    bool DoCastSpellInsteadMeleeAttack( const uint32 uiDiff )
 +    {
 +        if (m_uiFlameBuffetTimer <= uiDiff)
-+		{
++        {
 +            if (DoCastSpellIfCan(m_creature, SPELL_FLAME_BUFFET) == CAST_OK)
-+			    return true;
-+		}
-+		else
-+			m_uiFlameBuffetTimer -= uiDiff;
++                return true;
++        }
++        else
++            m_uiFlameBuffetTimer -= uiDiff;
 +
 +        return false;
 +    }
@@ -343,8 +380,8 @@ new file mode 100644
 +
 +            // phase 1 abilities
 +
-+            //if melee is in range do meleeattack, otherwise cast flame buffet	
-+			if (DoAutoAttack( uiDiff ))
++            //if melee is in range do meleeattack, otherwise cast flame buffet    
++            if (DoAutoAttack( uiDiff ))
 +                m_uiFlameBuffetTimer = 2500;
 +
 +            break;
@@ -516,8 +553,8 @@ new file mode 100644
 +            else
 +                m_uiDiveBombTimer -= uiDiff;
 +
-+            //if melee is in range do meleeattack, otherwise cast flame buffet	
-+		    if (DoAutoAttack( uiDiff ))
++            //if melee is in range do meleeattack, otherwise cast flame buffet    
++            if (DoAutoAttack( uiDiff ))
 +                m_uiFlameBuffetTimer = 2500;
 +
 +            break;
@@ -527,15 +564,9 @@ new file mode 100644
 +
 +struct MANGOS_DLL_DECL ember_of_alarAI : public ScriptedAI
 +{
-+    ember_of_alarAI(Creature* pCreature) : ScriptedAI(pCreature)
-+    { 
-+        m_uiAttackStart = 2000;
-+        Reset(); 
-+    }
++    ember_of_alarAI(Creature* pCreature) : ScriptedAI(pCreature) { Reset(); }
 +
 +    void Reset(){ }
-+    
-+    uint32 m_uiAttackStart;
 +
 +    void DamageTaken(Unit* pKiller, uint32 &damage)
 +    {
@@ -546,57 +577,6 @@ new file mode 100644
 +        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
 +        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
 +        DoCast(m_creature, SPELL_EMBER_BLAST);
-+    }
-+
-+    void AttackNearestTarget(Creature* pCreature)
-+    {
-+        float minRange = VISIBLE_RANGE;
-+        float range;
-+        Player* target = NULL;
-+
-+		Map::PlayerList const& players = m_creature->GetMap()->GetPlayers();
-+        for(Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-+        {
-+            if (Player* i_pl = itr->getSource())
-+            {
-+                if (i_pl->isTargetableForAttack())
-+                {
-+                    range = i_pl->GetDistance(pCreature);
-+                    if (range < minRange)
-+                    {
-+                        minRange = range;
-+                        target = i_pl;
-+                    }
-+                }
-+            }
-+        }
-+
-+        if (!target)
-+        {
-+            m_creature->ForcedDespawn();
-+            return;
-+        }
-+        pCreature->AI()->AttackStart(target);
-+    }
-+
-+    void UpdateAI(const uint32 uiDiff)
-+    {
-+        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-+        {
-+            if (m_uiAttackStart <= uiDiff)
-+            {
-+                AttackNearestTarget(m_creature);
-+                m_uiAttackStart = 50000;
-+            }
-+            else if (m_uiAttackStart >= 5000)
-+                m_creature->ForcedDespawn();
-+            else
-+                m_uiAttackStart -= uiDiff;
-+            return;
-+        }
-+            
-+
-+        DoMeleeAttackIfReady();
 +    }
 +};
 +
@@ -648,3 +628,4 @@ new file mode 100644
 +    pNewScript->GetAI = &GetAI_mob_flame_patch_alar;
 +    pNewScript->RegisterSelf();
 +}
+
