@@ -1,0 +1,19 @@
+diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
+index aad48f8..b5002f9 100644
+--- a/src/game/SpellEffects.cpp
++++ b/src/game/SpellEffects.cpp
+@@ -3606,6 +3606,14 @@ void Spell::DoSummonGuardian(SpellEffectIndex eff_idx, uint32 forceFaction)
+ 
+     float radius = GetSpellRadius(sSpellRadiusStore.LookupEntry(m_spellInfo->EffectRadiusIndex[eff_idx]));
+     int32 duration = GetSpellDuration(m_spellInfo);
++    switch(m_spellInfo->Id)
++    {
++    case 36107:                         // Call Totem of Spirits
++            duration = 30000;
++            break;
++    default:
++        break;
++    }
+     if (duration > 0)
+         if(Player* modOwner = m_caster->GetSpellModOwner())
+             modOwner->ApplySpellMod(m_spellInfo->Id, SPELLMOD_DURATION, duration);

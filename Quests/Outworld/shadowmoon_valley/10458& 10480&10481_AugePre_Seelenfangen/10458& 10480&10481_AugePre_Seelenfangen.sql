@@ -1,0 +1,1 @@
+UPDATE `creature_template` SET  `faction_A` =  '2', `faction_H` =  '2', `ScriptName` =  'npc_totem_of_spirits WHERE  `creature_template`.`entry` =21071;

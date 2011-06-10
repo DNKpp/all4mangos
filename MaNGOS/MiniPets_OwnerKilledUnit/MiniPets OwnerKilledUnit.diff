@@ -1,32 +1,62 @@
-diff --git a/src/game/CreatureAI.h b/src/game/CreatureAI.h
-index 60b619c..141ba27 100644
---- a/src/game/CreatureAI.h
-+++ b/src/game/CreatureAI.h
-@@ -101,6 +101,9 @@ class MANGOS_DLL_SPEC CreatureAI
-         // Called when the creature kills a unit
-         virtual void KilledUnit(Unit *) {}
+diff --git a/src/game/Pet.h b/src/game/Pet.h
+index fff7514..67f5550 100644
+--- a/src/game/Pet.h
++++ b/src/game/Pet.h
+@@ -146,6 +146,7 @@ extern const uint32 LevelStartLoyalty[6];
+ #define PET_FOLLOW_ANGLE (M_PI_F/2.0f)
  
-+		// Called when its owner kills a unit
-+		virtual void OwnerKilledUnit(Unit* /*pVictim*/) {}
+ class Player;
++class PetAI;
+ 
+ class Pet : public Creature
+ {
+@@ -263,6 +264,8 @@ class Pet : public Creature
+ 
+         DeclinedName const* GetDeclinedNames() const { return m_declinedname; }
+ 
++        PetAI* AI() { return (PetAI*)Creature::AI(); }
 +
-         // Called when the creature summon successfully other creature
-         virtual void JustSummoned(Creature* ) {}
+         bool    m_removed;                                  // prevent overwrite pet state in DB at next Pet::Update if pet already removed(saved)
+     protected:
+         uint32  m_happinessTimer;
+diff --git a/src/game/PetAI.h b/src/game/PetAI.h
+index d1de2e4..336ef95 100644
+--- a/src/game/PetAI.h
++++ b/src/game/PetAI.h
+@@ -38,6 +38,8 @@ class MANGOS_DLL_DECL PetAI : public CreatureAI
+         bool IsVisible(Unit *) const;
+         void JustDied(Unit* /*who*/) { _stopAttack(); }
+ 
++        virtual void OwnerKilledUnit(Unit* /*pVictim*/) {}
++
+         void UpdateAI(const uint32);
+         static int Permissible(const Creature *);
  
 diff --git a/src/game/Unit.cpp b/src/game/Unit.cpp
-index 4ce0ade..d43c622 100644
+index 5d2d13f..1e7047b 100644
 --- a/src/game/Unit.cpp
 +++ b/src/game/Unit.cpp
-@@ -785,6 +785,13 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
-         // Call KilledUnit for creatures
+@@ -33,7 +33,7 @@
+ #include "SpellAuras.h"
+ #include "MapManager.h"
+ #include "ObjectAccessor.h"
+-#include "CreatureAI.h"
++#include "PetAI.h"
+ #include "TemporarySummon.h"
+ #include "Formulas.h"
+ #include "Pet.h"
+@@ -794,6 +794,14 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
          if (GetTypeId() == TYPEID_UNIT && ((Creature*)this)->AI())
              ((Creature*)this)->AI()->KilledUnit(pVictim);
-+		// Call OwnerKilledUnit for MiniPets
-+		else if(GetTypeId() == TYPEID_PLAYER)
-+		{
-+			Player *pPlayer = dynamic_cast<Player*>(this);
-+			if (pPlayer && pPlayer->GetMiniPet())
-+				pPlayer->GetMiniPet()->AI()->OwnerKilledUnit(pVictim);
-+		}
  
++        // Call OwnerKilledUnit for MiniPets
++        else if(GetTypeId() == TYPEID_PLAYER)
++        {
++            Player *pPlayer = dynamic_cast<Player*>(this);
++            if (pPlayer && pPlayer->GetMiniPet() && pPlayer->GetMiniPet()->AI())
++                pPlayer->GetMiniPet()->AI()->OwnerKilledUnit(pVictim);
++        }
++
          // 10% durability loss on death
          // clean InHateListOf
+         if (pVictim->GetTypeId() == TYPEID_PLAYER)

@@ -1,0 +1,39 @@
+diff --git a/scripts/outland/shadowmoon_valley.cpp b/scripts/outland/shadowmoon_valley.cpp
+index 915264f..2eac568 100644
+--- a/scripts/outland/shadowmoon_valley.cpp
++++ b/scripts/outland/shadowmoon_valley.cpp
+@@ -1092,6 +1092,7 @@ struct MANGOS_DLL_DECL npc_totem_of_spiritsAI : public ScriptedPetAI
+ 
+     void OwnerKilledUnit(Unit* pVictim)
+     {
++        debug_log("owner killed unit");
+         if (pVictim->GetTypeId() != TYPEID_UNIT)
+             return;
+ 
+@@ -1099,7 +1100,25 @@ struct MANGOS_DLL_DECL npc_totem_of_spiritsAI : public ScriptedPetAI
+ 
+         // make elementals cast the sieve is only way to make it work properly, due to the spell target modes 22/7
+         if (uiEntry == NPC_EARTH_SPIRIT || uiEntry == NPC_FIERY_SPIRIT || uiEntry == NPC_WATER_SPIRIT || uiEntry == NPC_AIR_SPIRIT)
+-            pVictim->CastSpell(pVictim, SPELL_ELEMENTAL_SIEVE, true);
++            m_creature->CastSpell(pVictim, SPELL_ELEMENTAL_SIEVE, true);
++
++        switch(uiEntry)
++        {
++        case NPC_EARTH_SPIRIT:
++            m_creature->CastSpell(m_creature, SPELL_EARTH_CAPTURED, true);
++            break;
++        case NPC_FIERY_SPIRIT:
++            m_creature->CastSpell(m_creature, SPELL_FIERY_CAPTURED, true);
++            break;
++        case NPC_WATER_SPIRIT:
++            m_creature->CastSpell(m_creature, SPELL_WATER_CAPTURED, true);
++            break;
++        case NPC_AIR_SPIRIT:
++            m_creature->CastSpell(m_creature, SPELL_AIR_CAPTURED, true);
++            break;
++        default:
++            break;
++        }
+     }
+ };
+ 
