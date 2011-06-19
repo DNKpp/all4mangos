@@ -1,5 +1,5 @@
 diff --git a/scripts/eastern_kingdoms/molten_core/boss_majordomo_executus.cpp b/scripts/eastern_kingdoms/molten_core/boss_majordomo_executus.cpp
-index 7d0d57f..117bb4e 100644
+index 7d0d57f..a1b6459 100644
 --- a/scripts/eastern_kingdoms/molten_core/boss_majordomo_executus.cpp
 +++ b/scripts/eastern_kingdoms/molten_core/boss_majordomo_executus.cpp
 @@ -16,8 +16,8 @@
@@ -72,7 +72,12 @@ index 7d0d57f..117bb4e 100644
      bool m_bHasEncounterFinished;
      uint8 m_uiAddsKilled;
      uint8 m_uiSpeech;
-@@ -83,7 +107,7 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -79,11 +103,11 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+         m_uiMagicReflectionTimer  = 30000;                  // Damage reflection first so we alternate
+         m_uiDamageReflectionTimer = 15000;
+         m_uiBlastwaveTimer = 10000;
+-        m_uiTeleportTimer = 20000;
++        m_uiTeleportTimer = urand(25000, 30000);
          m_uiAegisTimer = 5000;
          m_uiSpeechTimer = 1000;
  
@@ -81,7 +86,7 @@ index 7d0d57f..117bb4e 100644
          m_uiAddsKilled = 0;
          m_uiSpeech = 0;
      }
-@@ -96,13 +120,49 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -96,13 +120,29 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
          DoScriptText(SAY_SLAY, m_creature);
      }
  
@@ -92,18 +97,6 @@ index 7d0d57f..117bb4e 100644
 +
 +        if (m_creature->isInCombat())
 +            return;
-+
-+        for (GUIDList::iterator itr = m_luiMajordomoAddsGUIDs.begin(); itr != m_luiMajordomoAddsGUIDs.end(); ++itr)
-+        {
-+            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
-+            {
-+                if (pCreature->isInCombat())
-+                {
-+                    m_creature->AddThreat(pCreature->getVictim());
-+                    return;
-+                }
-+            }
-+        }
 +
 +        ScriptedAI::MoveInLineOfSight(pWho);
 +    }
@@ -119,20 +112,12 @@ index 7d0d57f..117bb4e 100644
          if (m_pInstance)
              m_pInstance->SetData(TYPE_MAJORDOMO, IN_PROGRESS);
 +
-+        if (m_luiMajordomoAddsGUIDs.empty())
-+            return;
-+
-+        for (GUIDList::iterator itr = m_luiMajordomoAddsGUIDs.begin(); itr != m_luiMajordomoAddsGUIDs.end(); ++itr)
-+        {
-+            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
-+                pCreature->AddThreat(m_creature->getVictim());
-+        }
-+
++        m_creature->CallForHelp(30);
 +        m_creature->SetInCombatWithZone();
      }
  
      void JustReachedHome()
-@@ -128,6 +188,9 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -128,6 +168,9 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
              m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_OOC_NOT_ATTACKABLE);
              m_creature->setFaction(FACTION_MAJORDOMO_FRIENDLY);
  
@@ -142,7 +127,7 @@ index 7d0d57f..117bb4e 100644
              // Start his speech
              m_uiSpeechTimer = 1;                        // At next tick
              m_uiSpeech = 1;
-@@ -136,26 +199,83 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -136,26 +179,83 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
          }
      }
  
@@ -234,7 +219,7 @@ index 7d0d57f..117bb4e 100644
          }
      }
  
-@@ -190,6 +310,7 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -190,6 +290,7 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
              {
                  switch (m_uiSpeech)
                  {
@@ -242,7 +227,7 @@ index 7d0d57f..117bb4e 100644
                      case 1:
                          DoScriptText(SAY_DEFEAT_1, m_creature);
                          m_uiSpeechTimer = 7500;
-@@ -207,15 +328,74 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -207,15 +308,74 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
                          break;
                      case 4:
                          DoCastSpellIfCan(m_creature, SPELL_TELEPORT_SELF);
@@ -289,7 +274,7 @@ index 7d0d57f..117bb4e 100644
 +                        // Summon Ragnaros
 +                        if (m_pInstance)
 +                            if (GameObject* pGo = m_pInstance->instance->GetGameObject(m_pInstance->GetData64(GO_LAVA_STEAM)))
-+                                m_creature->SummonCreature(NPC_RAGNAROS, pGo->GetPositionX(), pGo->GetPositionY(), pGo->GetPositionZ(), fmod(m_creature->GetOrientation() + M_PI, 2*M_PI), TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 2*HOUR*IN_MILLISECONDS);
++                                m_creature->SummonCreature(NPC_RAGNAROS, pGo->GetPositionX(), pGo->GetPositionY(), pGo->GetPositionZ(), fmod(m_creature->GetOrientation() + M_PI, 2*M_PI), TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 2*HOUR*IN_MILLISECONDS, false, 50000);
 +                        ++m_uiSpeech;
 +                        m_uiSpeechTimer = 8700;
 +                        break;
@@ -320,22 +305,53 @@ index 7d0d57f..117bb4e 100644
                  }
              }
              else
-@@ -262,10 +442,13 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+@@ -227,7 +387,21 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
+             return;
+ 
+         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++        {
++            for (GUIDList::iterator itr = m_luiMajordomoAddsGUIDs.begin(); itr != m_luiMajordomoAddsGUIDs.end(); ++itr)
++            {
++                if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
++                {
++                    if (pCreature->isInCombat())
++                    {
++                        if (pCreature->getVictim())
++                            m_creature->AddThreat(pCreature->getVictim());
++                        return;
++                    }
++                }
++            }
+             return;
++        }
+ 
+         // Cast Ageis to heal self
+         if (m_uiAegisTimer <= uiDiff)
+@@ -262,11 +436,19 @@ struct MANGOS_DLL_DECL boss_majordomoAI : public ScriptedAI
          // Teleports the target to the heated rock in the center of the area
          if (m_uiTeleportTimer < uiDiff)
          {
--            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1))
-+            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
-             {
-                 if (DoCastSpellIfCan(pTarget, SPELL_TELEPORT) == CAST_OK)
-+                {
++            DoCastSpellIfCan(m_creature, SPELL_TELEPORT);
++            // teleport rnd target
+             if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1))
+-            {
+-                if (DoCastSpellIfCan(pTarget, SPELL_TELEPORT) == CAST_OK)
+-                    m_uiTeleportTimer = 20000;
+-            }
 +                    pTarget->NearTeleportTo(SPELL_TELEPORT_X, SPELL_TELEPORT_Y, SPELL_TELEPORT_Z, SPELL_TELEPORT_O);
-                     m_uiTeleportTimer = 20000;
-+                }
-             }
++            // teleport maintarget
++            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_TOPAGGRO, 0))
++                pTarget->NearTeleportTo(SPELL_TELEPORT_X, SPELL_TELEPORT_Y, SPELL_TELEPORT_Z, SPELL_TELEPORT_O);
++
++            ThreatList tList = m_creature->getThreatManager().getThreatList();
++            for (ThreatList::iterator itr = tList.begin(); itr != tList.end(); ++itr)
++                (*itr)->setThreat(0);
++
++            m_uiTeleportTimer = urand(25000, 30000);
          }
          else
-@@ -289,12 +472,61 @@ CreatureAI* GetAI_boss_majordomo(Creature* pCreature)
+             m_uiTeleportTimer -= uiDiff;
+@@ -289,12 +471,61 @@ CreatureAI* GetAI_boss_majordomo(Creature* pCreature)
      return new boss_majordomoAI(pCreature);
  }
  

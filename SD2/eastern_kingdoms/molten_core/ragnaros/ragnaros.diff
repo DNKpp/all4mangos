@@ -1,5 +1,5 @@
 diff --git a/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp b/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
-index a3a4faa..1743d60 100644
+index a3a4faa..3dc3bbc 100644
 --- a/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
 +++ b/scripts/eastern_kingdoms/molten_core/boss_ragnaros.cpp
 @@ -16,8 +16,8 @@
@@ -68,7 +68,7 @@ index a3a4faa..1743d60 100644
      uint32 m_uiWrathOfRagnarosTimer;
      uint32 m_uiMagmaBlastTimer;
      uint32 m_uiElementalFireTimer;
-@@ -76,13 +95,22 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -76,27 +95,121 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
      uint32 m_uiAttackTimer;
      uint32 m_uiAddCount;
  
@@ -91,8 +91,11 @@ index a3a4faa..1743d60 100644
 +        m_uiHammerTimer = 11000;
          m_uiMagmaBlastTimer = 2000;
          m_uiElementalFireTimer = 3000;
-         m_uiSubmergeTimer = 3*MINUTE*IN_MILLISECONDS;
-@@ -92,11 +120,96 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+-        m_uiSubmergeTimer = 3*MINUTE*IN_MILLISECONDS;
++        m_uiSubmergeTimer = 0.1*MINUTE*IN_MILLISECONDS;
+         m_uiAttackTimer = 90*IN_MILLISECONDS;
+         m_uiAddCount = 0;
+ 
          m_bHasYelledMagmaBurst = false;
          m_bHasSubmergedOnce = false;
          m_bIsSubmerged = false;
@@ -218,7 +221,7 @@ index a3a4faa..1743d60 100644
      }
  
      void SummonedCreatureJustDied(Creature* pSummmoned)
-@@ -151,8 +269,43 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -151,8 +269,41 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          }
      }
  
@@ -244,8 +247,6 @@ index a3a4faa..1743d60 100644
 +                else
 +                {
 +                    m_uiEnterCombatTimer = 0;
-+                    // If we don't remove this passive flag, he will be unattackable after evading, this way he will enter combat
-+                    m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
 +                    if (m_pInstance)
 +                    {
 +                        if (Player* pPlayer = m_pInstance->GetPlayerInMap(true, false))
@@ -262,7 +263,7 @@ index a3a4faa..1743d60 100644
          // Return since we have no target
          if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
              return;
-@@ -176,21 +329,52 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -176,21 +327,54 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
              return;
          }
  
@@ -291,7 +292,9 @@ index a3a4faa..1743d60 100644
 +        {
 +            if (m_uiEruptionTrigger)
 +            {
-+                m_creature->GetMap()->GetCreature(m_uiEruptionTrigger)->CastSpell(m_creature->GetMap()->GetCreature(m_uiEruptionTrigger), SPELL_ERUPTION, true);
++                Creature *pCreature = m_creature->GetMap()->GetCreature(m_uiEruptionTrigger);
++                if (pCreature)
++                    pCreature->CastSpell(pCreature, SPELL_ERUPTION, true);
 +                m_uiEruptionTrigger = NULL;
 +            }
 +            m_uiEruptionTimer = urand(10000, 15000);
@@ -360,7 +363,7 @@ index a3a4faa..1743d60 100644
          // Submerge Timer
          if (m_uiSubmergeTimer < uiDiff)
          {
-@@ -219,8 +436,10 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -219,8 +436,9 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
              float fX, fY, fZ;
              for(uint8 i = 0; i < MAX_ADDS_IN_SUBMERGE; ++i)
              {
@@ -368,12 +371,11 @@ index a3a4faa..1743d60 100644
 -                m_creature->SummonCreature(NPC_SON_OF_FLAME, fX, fY, fZ, 0.0f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 1000);
 +                m_creature->GetClosePoint(fX, fY, fZ, 0, urand(30, 50), urand(0, 360));
 +                m_uiAdds[i] = m_creature->SummonCreature(NPC_SON_OF_FLAME, fX, fY, fZ, 0.0f, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000)->GetGUID();
-+                m_creature->GetMap()->GetCreature(m_uiAdds[i])->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE);
 +                m_bJustSpawnedAdds = true;
              }
  
              return;
-@@ -228,43 +447,11 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
+@@ -228,43 +446,11 @@ struct MANGOS_DLL_DECL boss_ragnarosAI : public Scripted_NoMovementAI
          else
              m_uiSubmergeTimer -= uiDiff;
  
@@ -419,3 +421,10 @@ index a3a4faa..1743d60 100644
      }
  };
  
+@@ -281,4 +467,4 @@ void AddSC_boss_ragnaros()
+     pNewScript->Name = "boss_ragnaros";
+     pNewScript->GetAI = &GetAI_boss_ragnaros;
+     pNewScript->RegisterSelf();
+-}
++}
+\ No newline at end of file

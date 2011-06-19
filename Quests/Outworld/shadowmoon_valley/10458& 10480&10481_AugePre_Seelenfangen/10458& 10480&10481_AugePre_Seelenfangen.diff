@@ -1,16 +1,21 @@
 diff --git a/scripts/outland/shadowmoon_valley.cpp b/scripts/outland/shadowmoon_valley.cpp
-index 915264f..2eac568 100644
+index 915264f..a8ff86f 100644
 --- a/scripts/outland/shadowmoon_valley.cpp
 +++ b/scripts/outland/shadowmoon_valley.cpp
-@@ -1092,6 +1092,7 @@ struct MANGOS_DLL_DECL npc_totem_of_spiritsAI : public ScriptedPetAI
+@@ -1082,7 +1082,11 @@ enum
  
-     void OwnerKilledUnit(Unit* pVictim)
-     {
-+        debug_log("owner killed unit");
-         if (pVictim->GetTypeId() != TYPEID_UNIT)
-             return;
+ struct MANGOS_DLL_DECL npc_totem_of_spiritsAI : public ScriptedPetAI
+ {
+-    npc_totem_of_spiritsAI(Creature* pCreature) : ScriptedPetAI(pCreature) { Reset(); }
++    npc_totem_of_spiritsAI(Creature* pCreature) : ScriptedPetAI(pCreature)
++    {
++        Reset();
++        m_creature->SetActiveObjectState(true);
++    }
  
-@@ -1099,7 +1100,25 @@ struct MANGOS_DLL_DECL npc_totem_of_spiritsAI : public ScriptedPetAI
+     void Reset() {}
+ 
+@@ -1099,7 +1103,25 @@ struct MANGOS_DLL_DECL npc_totem_of_spiritsAI : public ScriptedPetAI
  
          // make elementals cast the sieve is only way to make it work properly, due to the spell target modes 22/7
          if (uiEntry == NPC_EARTH_SPIRIT || uiEntry == NPC_FIERY_SPIRIT || uiEntry == NPC_WATER_SPIRIT || uiEntry == NPC_AIR_SPIRIT)
