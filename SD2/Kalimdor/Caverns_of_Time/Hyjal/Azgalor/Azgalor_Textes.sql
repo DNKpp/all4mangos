@@ -1,0 +1,8 @@
+-- azgalor
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500427','Abandon all hope! The legion has returned to finish what was begun so many years ago. This time there will be no escape!','Gebt alle Hoffnung auf! Die Legion ist zurück, um zu beenden, was so vor vielen Jahren begonnen hat. Diese mal gibt es kein entrinnen.','10999','1','azgalor SAY_ENTER');
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500428','Reesh, hokta!','Reesh, hokta!','11001','1','azgalor SAY_SLAY1');
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500429','No one is going to save you.','Niemand vermag euch noch zu retten.','11047','1','azgalor SAY_SLAY2');
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500430','Don\'t fight it.','Wehrt euch nicht dagegen.','11048','1','azgalor SAY_SLAY3');
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500431','Your time is almost... up.','Eure Zeit ist beinahe... abgelaufen.','11002','1','azgalor SAY_DEATH');
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500432','Suffer you despicable insect!','Leide, jämmerliches Insekt!','11000','1','azgalor SAY_DOOM1');
+INSERT INTO `custom_texts` (`entry`, `content_default`, `content_loc3`, `sound`, `type`, `comment`) VALUES ('-2500433','Just a taste... of what awaits you.','Ein kleiner Vorgeschmack... auf das was euch erwartet.','11046','1','azgalor SAY_DOOM2');

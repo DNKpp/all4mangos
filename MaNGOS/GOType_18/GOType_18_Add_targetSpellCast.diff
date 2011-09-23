@@ -1,0 +1,45 @@
+diff --git a/src/game/GameObject.cpp b/src/game/GameObject.cpp
+index c732564..d3232e8 100644
+--- a/src/game/GameObject.cpp
++++ b/src/game/GameObject.cpp
+@@ -1325,6 +1325,40 @@ void GameObject::Use(Unit* user)
+             if (GetUniqueUseCount() < info->summoningRitual.reqParticipants)
+                 return;
+ 
++            //cast spell on users
++            switch(info->summoningRitual.casterTargetSpell)
++            {
++            case 1:
++            case 0: break;
++            default:
++                std::list<Player*> pPlayerList;
++                //check userlist for online and alive players
++                for (GuidsSet::iterator i_UserList = m_UniqueUsers.begin(); i_UserList != m_UniqueUsers.end(); ++i_UserList)
++                {
++                    if (!i_UserList->IsPlayer())
++                        continue;
++                    Player *pTemp = GetMap()->GetPlayer(*i_UserList);
++                    if (pTemp && pTemp->isAlive() && pTemp != GetOwner())
++                        pPlayerList.push_back(pTemp);
++                }
++
++                //get random player from the valid player list in amount of "casterTargetSpellTargets" or lower
++                for (uint32 j = 0; j < info->summoningRitual.casterTargetSpellTargets; j++)
++                {
++                    if (pPlayerList.empty())
++                        break;
++
++                    uint32 i = urand(0, pPlayerList.size()-1);
++                    std::list<Player*>::iterator iList = pPlayerList.begin();
++                    for (;i < pPlayerList.size()-1; i++)
++                        ++iList;
++
++                    (*iList)->CastSpell((*iList), info->summoningRitual.casterTargetSpell, true);
++                    pPlayerList.remove(*iList);
++                }
++                break;
++            }
++
+             // owner is first user for non-wild GO objects, if it offline value already set to current user
+             if (!GetOwnerGuid())
+                 if (Player* firstUser = GetMap()->GetPlayer(m_firstUser))

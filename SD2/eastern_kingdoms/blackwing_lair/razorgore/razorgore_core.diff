@@ -1,0 +1,62 @@
+diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
+index 3b3498f..8c566ba 100644
+--- a/src/game/SpellEffects.cpp
++++ b/src/game/SpellEffects.cpp
+@@ -795,6 +795,28 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
+                     m_caster->CastSpell(unitTarget, spell_list[urand(0, 5)], true);
+                     return;
+                 }
++                case 19869:                                 // Dragon Orb
++                {
++                    // Don't allow player to use orb if exhausted
++                    if (m_caster->HasAura(23958))
++                        return;
++
++                    // Cast possess and use dragon orb
++                    m_caster->CastSpell(m_caster, 23958, true);         // mind exhaustion
++                    m_caster->CastSpell(unitTarget, 19832, true);       // charm
++
++                    // Before 2.0.1 there was another spell 23021 used
++                    // Also there is another spell involved in this sequence with unk porpose 23018
++                    return;
++                }                
++                case 19873:                                 // Destroy Egg (Razorgore)
++                {
++                    if (!gameObjTarget || !m_caster || !m_caster->isCharmed())
++                        return;
++
++                    gameObjTarget->Use(m_caster->GetCharmerOrOwner());
++                    break;
++                }
+                 case 19411:                                 // Lava Bomb
+                 case 20474:                                 // Lava Bomb
+                 {
+@@ -895,6 +917,12 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
+ 
+                     return;
+                 }
++                case 23024:                                 // Fireball
++                {
++                    if (eff_idx == EFFECT_INDEX_0)
++                        EffectInstaKill(eff_idx);
++                    return;
++                }
+                 case 23074:                                 // Arcanite Dragonling
+                 {
+                     if (!m_CastItem)
+diff --git a/src/game/SpellMgr.cpp b/src/game/SpellMgr.cpp
+index 31f7ca7..b10b111 100644
+--- a/src/game/SpellMgr.cpp
++++ b/src/game/SpellMgr.cpp
+@@ -1828,6 +1828,11 @@ bool SpellMgr::IsNoStackSpellDueToSpell(uint32 spellId_1, uint32 spellId_2) cons
+                     if (spellInfo_1->SpellIconID == 1662 && spellInfo_2->SpellIconID == 1662)
+                         return false;
+ 
++                    // Possess and Possess
++                    if ((spellInfo_1->Id == 18832 && spellInfo_2->Id == 23014) ||
++                        (spellInfo_2->Id == 18832 && spellInfo_1->Id == 23014))
++                         return false;
++
+                     break;
+                 }
+                 case SPELLFAMILY_MAGE:

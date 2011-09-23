@@ -1,0 +1,192 @@
+diff --git a/src/game/SpellAuras.cpp b/src/game/SpellAuras.cpp
+index 2540df4..8fca134 100644
+--- a/src/game/SpellAuras.cpp
++++ b/src/game/SpellAuras.cpp
+@@ -2432,6 +2432,8 @@ void Aura::HandleAuraMounted(bool apply, bool Real)
+     else
+     {
+         target->Unmount(true);
++        if (GetId() == 43883)
++            target->RemoveAurasDueToSpell(42146);
+     }
+ }
+ 
+@@ -6292,16 +6294,104 @@ void Aura::PeriodicDummyTick()
+ //              case 42879: break;
+ //              // Tricky Treat
+ //              case 42919: break;
+-//              // Giddyup!
+-//              case 42924: break;
+-//              // Ram - Trot
+-//              case 42992: break;
+-//              // Ram - Canter
+-//              case 42993: break;
+-//              // Ram - Gallop
+-//              case 42994: break;
+-//              // Ram Level - Neutral
+-//              case 43310: break;
++                case 42924:
++                    // this is a stackable aura, look up the stack an decide which aura should be active.
++                    if (Unit *pWho = GetTarget())
++                    {
++                        // every tick remove a stack from the aura.
++                        if (GetStackAmount() > 0)
++                            pWho->RemoveAuraHolderFromStack(42924, 1);
++
++                        uint32 uiStack = GetStackAmount();
++                        // Ram - Gallop
++                        // if stack is 8 or greater, cast "Gallop".
++                        if (uiStack >= 7)
++                        {
++                            pWho->RemoveAurasDueToSpell(42992);
++                            pWho->RemoveAurasDueToSpell(42993);
++                            if (!pWho->HasAura(42994))
++                                pWho->CastSpell(pWho, 42994, true);
++                        }
++                        // Ram - Canter
++                        // if stack is 5 or greater, remove "Gallop" and cast "Canter".
++                        else if (uiStack >= 4)
++                        {
++                            pWho->RemoveAurasDueToSpell(42992);
++                            pWho->RemoveAurasDueToSpell(42994);
++                            if (!pWho->HasAura(42993))
++                                pWho->CastSpell(pWho, 42993, true);
++                        }
++                        // Ram - Trot
++                        // if stack is 2 or greater, remove "Canter" and cast "Trot".
++                        else if (uiStack >= 2)
++                        {
++                            pWho->RemoveAurasDueToSpell(42994);
++                            pWho->RemoveAurasDueToSpell(42993);
++                            if (!pWho->HasAura(42992))
++                                pWho->CastSpell(pWho, 42992, true);
++                        }
++                        // Ram - Normal
++                        else
++                            pWho->CastSpell(pWho, 43310, true);
++                    }
++                    break;
++                // Ram - Trot
++                case 42992:
++                    if (Player *pPlayer = (Player*)GetTarget())
++                    {
++                        // if player is not mounted, remove this aura
++                        if (!pPlayer->HasAura(43883))
++                        {
++                            pPlayer->RemoveAurasDueToSpell(42992);
++                            return;
++                        }
++                        // if aura ticks 8secs or more, give the credit
++                        if (GetAuraTicks() >= 8)
++                                pPlayer->KilledMonsterCredit(24263);
++                    }
++                    break;
++                // Ram - Canter
++                case 42993:
++                    if (Player *pPlayer = (Player*)GetTarget())
++                    {
++                        // if player is not mounted, remove this aura
++                        if (!pPlayer->HasAura(43883))
++                        {
++                            pPlayer->RemoveAurasDueToSpell(42993);
++                            return;
++                        }
++                        // if aura ticks 8secs or more, give the credit
++                        if (GetAuraTicks() >= 8)
++                                pPlayer->KilledMonsterCredit(24264);
++                    }
++                    break;
++                // Ram - Gallop
++                case 42994:
++                    if (Player *pPlayer = (Player*)GetTarget())
++                    {
++                        // if player is not mounted, remove this aura
++                        if (!pPlayer->HasAura(43883))
++                        {
++                            pPlayer->RemoveAurasDueToSpell(42994);
++                            return;
++                        }
++                        // if aura ticks 8secs or more, give the credit
++                        if (GetAuraTicks() >= 8)
++                                pPlayer->KilledMonsterCredit(24265);
++                    }
++                    break;
++                // Ram Level - Neutral
++                case 43310:
++                    if (Player *pPlayer = (Player*)GetTarget())
++                    {
++                        // if player is not mounted, remove this aura
++                        if (!pPlayer->HasAura(43883))
++                        {
++                            pPlayer->RemoveAurasDueToSpell(43310);
++                            return;
++                        }
++                    }
++                    break;
+ //              // Headless Horseman - Maniacal Laugh, Maniacal, Delayed 17
+ //              case 43884: break;
+ //              // Headless Horseman - Maniacal Laugh, Maniacal, other, Delayed 17
+diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
+index 3b3498f..0eed6cf 100644
+--- a/src/game/SpellEffects.cpp
++++ b/src/game/SpellEffects.cpp
+@@ -4822,6 +4822,59 @@ void Spell::EffectScriptEffect(SpellEffectIndex eff_idx)
+                     unitTarget->CastSpell(unitTarget, 41131, true);
+                     break;
+                 }
++                case 42924:                                 // Giddyup!
++                {
++                    // if player has "Exhausted Ram" aura, remove all stacks of this aura
++                    // if player has no mount aura, remove all stacks of this aura.
++                    if (!m_caster->HasAura(43883) || m_caster->HasAura(43332))
++                    {
++                        m_caster->RemoveAurasDueToSpell(42924);
++                        return;
++                    }
++
++                    // every time this spell is used (call from item) player gets a new stack
++                    // if stack is 11 or greater player gets a debuff "Exhausted Ram", which
++                    // decrease walkspeed.
++                    if (Aura *pAura = m_caster->GetAura(42924, EFFECT_INDEX_0))
++                    {
++                        uint32 uiStack = pAura->GetStackAmount();
++                        // Exhausted Ram
++                        if (uiStack >= 11)
++                        {
++                            m_caster->CastSpell(m_caster, 43332, true);
++                            m_caster->RemoveAurasDueToSpell(42994);
++                            m_caster->RemoveAurasDueToSpell(42924);
++                        }
++                        // Ram - Gallop
++                        else if (uiStack >= 7)
++                        {
++                            m_caster->RemoveAurasDueToSpell(42993);
++                            m_caster->RemoveAurasDueToSpell(42992);
++                            if (!m_caster->HasAura(42994))
++                                m_caster->CastSpell(m_caster, 42994, true);
++                        }
++                        // Ram - Canter
++                        else if (uiStack >= 4)
++                        {
++                            m_caster->RemoveAurasDueToSpell(42994);
++                            m_caster->RemoveAurasDueToSpell(42992);
++                            if (!m_caster->HasAura(42993))
++                                m_caster->CastSpell(m_caster, 42993, true);
++                        }
++                        // Ram - Trot
++                        else if (uiStack >= 2)
++                        {
++                            m_caster->RemoveAurasDueToSpell(42993);
++                            m_caster->RemoveAurasDueToSpell(42994);
++                            if (!m_caster->HasAura(42992))
++                                m_caster->CastSpell(m_caster, 42992, true);
++                        }
++                        // Ram - Normal
++                        else
++                            m_caster->CastSpell(m_caster, 43310, true);
++                    }
++                    break;
++                }
+                 case 44876:                                 // Force Cast - Portal Effect: Sunwell Isle
+                 {
+                     if (!unitTarget)

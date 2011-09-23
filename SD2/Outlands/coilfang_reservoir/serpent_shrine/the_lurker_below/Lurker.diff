@@ -1,5 +1,5 @@
 diff --git a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
-index de175eb..13bb3b6 100644
+index de175eb..1e17930 100644
 --- a/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
 +++ b/scripts/outland/coilfang_reservoir/serpent_shrine/boss_the_lurker_below.cpp
 @@ -16,37 +16,88 @@
@@ -197,7 +197,7 @@ index de175eb..13bb3b6 100644
      }
  
      void JustDied(Unit* pVictim)
-@@ -79,55 +200,374 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
+@@ -79,36 +200,345 @@ struct MANGOS_DLL_DECL boss_the_lurker_belowAI : public ScriptedAI
              m_pInstance->SetData(TYPE_THELURKER_EVENT, DONE);
      }
  
@@ -310,8 +310,6 @@ index de175eb..13bb3b6 100644
          switch (m_uiPhase)
          {
 +            case PHASE_SPOUT:
-+                //rotate m_creature
-+                m_uiTimeRemain    -= uiDiff;
 +                //rotates clockwise
 +                if (m_bClockwise)
 +                    m_Orientation -= m_OriPerSec * uiDiff / 1000;
@@ -334,14 +332,16 @@ index de175eb..13bb3b6 100644
 +                    m_uiWaterBolt_Timer     = 2000;
 +                    m_uiPhase               = PHASE_NORMAL;
 +                }
++                else
++                    m_uiTimeRemain    -= uiDiff;
 +                break;
              case PHASE_NORMAL:
 +                m_creature->SetFacingToObject(m_creature->getVictim());
 +                //when Fight-Phase ends
 +                if (m_uiFight_Timer <= uiDiff)
 +                {
-+                    m_uiSubmerge_Timer        = 60000;
-+                    m_uiPhase                = PHASE_SUBMERGED;
++                    m_uiSubmerge_Timer      = 60000;
++                    m_uiPhase               = PHASE_SUBMERGED;
 +                    m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
 +                    m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
 +                    DoCastSpellIfCan(m_creature, SPELL_SUBMERGE, CAST_INTERRUPT_PREVIOUS);
@@ -429,10 +429,10 @@ index de175eb..13bb3b6 100644
 +                else
 +                    m_uiSubmerge_Timer -= uiDiff;
 +            break;
-         }
-     }
- };
- 
++        }
++    }
++};
++
 +//coilfang ambusher script
 +struct MANGOS_DLL_DECL coilfang_ambusherAI : public ScriptedAI
 +{
@@ -539,17 +539,16 @@ index de175eb..13bb3b6 100644
 +        {
 +            DoCastSpellIfCan(m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0),    SPELL_TELEPORT);
 +            m_uiTeleport_Timer = urand(5000, 60000);
-+        }
+         }
 +        else
 +            m_uiTeleport_Timer -= uiDiff;
 +
 +        //autohit
 +        DoMeleeAttackIfReady();
-+    }
-+};
-+
- CreatureAI* GetAI_boss_the_lurker_below(Creature* pCreature)
- {
+     }
+ };
+ 
+@@ -117,17 +547,27 @@ CreatureAI* GetAI_boss_the_lurker_below(Creature* pCreature)
      return new boss_the_lurker_belowAI(pCreature);
  }
  

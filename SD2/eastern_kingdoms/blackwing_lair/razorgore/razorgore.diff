@@ -1,17 +1,10 @@
 diff --git a/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h b/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h
-index c459f11..4bfcd89 100644
+index b98841f..8199999 100644
 --- a/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h
 +++ b/scripts/eastern_kingdoms/blackwing_lair/blackwing_lair.h
-@@ -18,7 +18,16 @@ enum
-     TYPE_CHROMAGGUS             = 6,
+@@ -19,6 +19,9 @@ enum
      TYPE_NEFARIAN               = 7,
  
-+    DATA_RAZORGORE              = 8,
-+    DATA_GRETHOK                = 9,
-+    DATA_ORB_TRIGGER            = 10,
-+
-+    DATA_ORB_OF_DOMINATION      = 11,
-+
      NPC_RAZORGORE               = 12435,
 +    NPC_GRETHOK                 = 12557,
 +    NPC_BLACKWING_GUARDSMAN     = 14456,
@@ -19,64 +12,46 @@ index c459f11..4bfcd89 100644
      NPC_VAELASTRASZ             = 13020,
      NPC_LASHLAYER               = 12017,
      NPC_FIREMAW                 = 11983,
-@@ -35,39 +44,8 @@ enum
-     GO_DOOR_CHROMAGGUS_SIDE     = 179116,
-     GO_DOOR_CHROMAGGUS_EXIT     = 179117,
-     GO_DOOR_VAELASTRASZ         = 179364,
--    GO_DOOR_LASHLAYER           = 179365
--};
--
--class MANGOS_DLL_DECL instance_blackwing_lair : public ScriptedInstance
--{
--    public:
--        instance_blackwing_lair(Map* pMap);
--        ~instance_blackwing_lair() {}
--
--        void Initialize();
--        bool IsEncounterInProgress() const;
--
--        void OnObjectCreate(GameObject* pGo);
--
--        void SetData(uint32 uiType, uint32 uiData);
--        uint32 GetData(uint32 uiType);
--
--        const char* Save() { return m_strInstData.c_str(); }
--        void Load(const char* chrIn);
--
--    protected:
--        std::string m_strInstData;
--        uint32 m_auiEncounter[MAX_ENCOUNTER];
--
--        // Doors
--        uint64 m_uiRazorgoreEnterDoorGUID;
--        uint64 m_uiRazorgoreExitDoorGUID;
--        uint64 m_uiVaelastraszDoorGUID;
--        uint64 m_uiLashlayerDoorGUID;
--        uint64 m_uiChromaggusEnterDoorGUID;
--        uint64 m_uiChromaggusExitDoorGUID;
--        uint64 m_uiChromaggusSideDoorGUID;
--        uint64 m_uiNefarianDoorGUID;
-+    GO_DOOR_LASHLAYER           = 179365,
-+    GO_ORB_OF_DOMINATION        = 177808,
-+    GO_BLACK_DRAGON_EGG         = 177807,
+@@ -65,6 +68,7 @@ class MANGOS_DLL_DECL instance_blackwing_lair : public ScriptedInstance
+         uint32 m_auiEncounter[MAX_ENCOUNTER];
+ 
+         GUIDList m_lTechnicianGuids;
++        GUIDList m_lGuardsmanGuids;
  };
--
+ 
  #endif
 diff --git a/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp b/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp
-index 82c2493..6c7bb91 100644
+index a7b0f74..f85b23e 100644
 --- a/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp
 +++ b/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp
-@@ -36,13 +36,378 @@ enum
+@@ -16,13 +16,14 @@
+ 
+ /* ScriptData
+ SDName: Boss_Razorgore
+-SD%Complete: 50
+-SDComment: Needs additional review. Phase 1 NYI (Grethok the Controller), Conflagration needs core support
++SD%Complete: 90
++SDComment: some styl issues
+ SDCategory: Blackwing Lair
+ EndScriptData */
+ 
+ #include "precompiled.h"
+ #include "blackwing_lair.h"
++#include "TemporarySummonGO.h"
+ 
+ // Razorgore Phase 2 Script
+ enum
+@@ -38,13 +39,399 @@ enum
      SPELL_WARSTOMP              = 24375,
      SPELL_FIREBALL_VOLLEY       = 22425,
      SPELL_CONFLAGRATION         = 23023,
++
 +    SPELL_MIND_EXHAUSTION       = 23958,
++    SPELL_POSSES                = 23014,
 +    SPELL_DRAGON_ORB            = 19869,
-+    SPELL_USE_DRAGON_ORB        = 23018,
 +    SPELL_DESTROY_EGG           = 19873,
 +    SPELL_FIREBALL              = 23024,
 +    SPELL_WARMING_FLAMES        = 23040,
-+    SPELL_BLUE_BEAM             = 22203,
 +
 +    MAX_DRAGONKINS              = 12,
 +    MAX_ORKS                    = 40,
@@ -85,16 +60,17 @@ index 82c2493..6c7bb91 100644
 +    NPC_DEATH_TALON_DRAGONSPAWN = 12422,            // dragonkin
 +    NPC_BLACKWING_LEGIONNAIRE   = 12416,            // orc
 +    NPC_BLACKWING_MAGE          = 12420,            // orc
-+
-+    FACTION_RAZORGORE           = 103,
 +};
++
++#define SAY_PHASE_FIGHT "I'm free! That device shall never torment me again!"
++
 +
 +enum Phases
 +{
 +    PHASE_NONE,
-+    PHASE_GRETHOK,
-+    PHASE_EGGS,
++    PHASE_ONE,
 +    PHASE_FIGHT,
++    PHASE_DONE,
 +};
 +
 +struct sSpawnLocation
@@ -151,12 +127,8 @@ index 82c2493..6c7bb91 100644
 +    { -7583.950f,  -991.112f, 407.199f }
 +};
 +
-+struct sSpawnLocation aAddDespawnWPs[2] =
-+{
-+    { -7595.694f, -1053.374f, 408.157f },
-+    { -7555.137f, -1024.815f, 408.490f }
- };
- 
++const sSpawnLocation aAddCombatStartPosition = { -7554.54f, -1024.50f, 408.49f };
++
 +/*######
 +## mob_blackwing_orb_trigger
 +######*/
@@ -165,11 +137,17 @@ index 82c2493..6c7bb91 100644
 +    mob_blackwing_orb_triggerAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature)
 +    {
 +        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
-+        m_uiRazorgoreGUID = m_pInstance->GetData64(DATA_RAZORGORE);
-+        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
-+        if (m_pInstance->GetData(TYPE_RAZORGORE) != DONE)
-+            SpawnEggs();
++        if (!m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE))
++            m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
++        if (!m_creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE))
++            m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
 +        Reset();
++
++        if (m_pInstance && m_pInstance->GetData(TYPE_RAZORGORE) != DONE)
++        {
++            SpawnEggs();
++            m_pInstance->SetData(TYPE_RAZORGORE, FAIL);
++        }
 +    }
 +    
 +    ScriptedInstance* m_pInstance;
@@ -177,135 +155,158 @@ index 82c2493..6c7bb91 100644
 +    uint32 m_uiAddSummonTimer;
 +    uint32 m_uiEggCounter;
 +    Phases m_Phase;
-+    uint8  m_uiWaypoint;
 +
-+    uint64 m_uiRazorgoreGUID;
-+    std::list<uint64> m_uiDragonkinGUIDs;
-+    std::list<uint64> m_uiOrkGUIDs;
-+    std::list<uint64> m_uiDragonEggGUIDs;
++    std::list<ObjectGuid> m_uiDragonkinGUIDs;
++    std::list<ObjectGuid> m_uiOrkGUIDs;
++    std::list<ObjectGuid> m_uiDragonEggGUIDs;
 +
 +    void Reset()
 +    {
 +        m_uiEggCounter          = 0;
-+        m_Phase                 = PHASE_NONE;
 +
-+        m_uiAddSummonTimer      = 3000;
-+        m_uiWaypoint            = 0;
++        if (m_pInstance && m_pInstance->GetData(TYPE_RAZORGORE) != DONE)
++            m_Phase = PHASE_NONE;
++        else
++            m_Phase = PHASE_DONE;
++
++        m_uiAddSummonTimer      = 40000;
 +        UnsummonAdds();
 +        RespawnAllEggs();
 +    }
 +
-+    // add destroyed edd counter, if greater MAX_EGGS switch phase and heal razorgore to full
++    // add destroyed egg counter, if greater MAX_EGGS switch phase and heal razorgore to full
 +    void DestroyEgg()
 +    {
 +        m_uiEggCounter++;
-+        if (m_uiEggCounter >= 3)
++        if (m_uiEggCounter == 1)
++        {
++            if (Creature *pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE))
++                pRazorgore->MonsterYell(SAY_EGGS_BROKEN_1, 0);
++        }
++        else if (m_uiEggCounter == 12)
++        {
++            if (Creature *pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE))
++                pRazorgore->MonsterYell(SAY_EGGS_BROKEN_2, 0);
++        }
++        else if (m_uiEggCounter == 25)
++        {
++            if (Creature *pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE))
++                pRazorgore->MonsterYell(SAY_EGGS_BROKEN_3, 0);
++        }
++        else if (m_uiEggCounter >= MAX_EGGS)
 +        {
 +            m_Phase = PHASE_FIGHT;
-+            if (Creature *pRazorgore = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_RAZORGORE)))
++            if (Creature *pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE))
 +            {
-+                pRazorgore->GetCharmerOrOwner()->RemoveAura(SPELL_USE_DRAGON_ORB, EFFECT_INDEX_0);  // remove use dragon orb from razorgore-charmer
-+                pRazorgore->RemoveAurasDueToSpell(19832);                                           // remove mind controle from razorgore
++                pRazorgore->MonsterYell(SAY_PHASE_FIGHT, 0);
++                m_creature->CastSpell(pRazorgore, SPELL_POSSES, true);
++                pRazorgore->RemoveAllAuras();                                                       // remove mind controle from razorgore
 +                pRazorgore->CastSpell(pRazorgore, SPELL_WARMING_FLAMES, true);
 +            }
 +            AddsMoveToDespawn();
 +        }
 +    }
 +
-+    // move adds to current WP, to despawn
++    void SetAddToDespawn(Creature *pCreature)
++    {
++        pCreature->SetSpeedRate(MOVE_WALK, 4);
++        pCreature->SetSummonPoint(CreatureCreatePos(pCreature->GetMap(), aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ, 0) );
++        pCreature->DeleteThreatList();
++        if (!pCreature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE))
++            pCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
++    }
++
 +    void AddsMoveToDespawn()
 +    {
-+        for (std::list<uint64>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
++        bool bAddYelled = false;
++        for (std::list<ObjectGuid>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +            {
-+                if (m_uiWaypoint < 2)
++                if (!bAddYelled)
 +                {
-+                    pCreature->GetMotionMaster()->Clear();
-+                    pCreature->SetSpeedRate(MOVE_WALK, 4);
-+                    pCreature->GetMotionMaster()->MovePoint(m_uiWaypoint, aAddDespawnWPs[m_uiWaypoint].m_fX, aAddDespawnWPs[m_uiWaypoint].m_fY, aAddDespawnWPs[m_uiWaypoint].m_fZ);
++                    pCreature->MonsterTextEmote(EMOTE_TROOPS_FLEE, 0);
++                    bAddYelled = true;
 +                }
-+                else
-+                    pCreature->ForcedDespawn();
++                SetAddToDespawn(pCreature);
 +            }
 +        }
 +
-+        for (std::list<uint64>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
++        for (std::list<ObjectGuid>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
-+            {
-+                if (m_uiWaypoint < 2)
-+                {
-+                    pCreature->GetMotionMaster()->Clear();
-+                    pCreature->SetSpeedRate(MOVE_WALK, 4);
-+                    pCreature->GetMotionMaster()->MovePoint(m_uiWaypoint, aAddDespawnWPs[m_uiWaypoint].m_fX, aAddDespawnWPs[m_uiWaypoint].m_fY, aAddDespawnWPs[m_uiWaypoint].m_fZ);
-+                }
-+                else
-+                    pCreature->ForcedDespawn();
-+            }
++                SetAddToDespawn(pCreature);
 +        }
 +    }
 +
 +    // if all adds at current waypoint set to next WP
 +    void CheckAddMovement()
 +    {
-+        for (std::list<uint64>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
++        for (std::list<ObjectGuid>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +            {
-+                if (pCreature->GetDistance(aAddDespawnWPs[m_uiWaypoint].m_fX, aAddDespawnWPs[m_uiWaypoint].m_fY, aAddDespawnWPs[m_uiWaypoint].m_fZ) > 3)
-+                    return;
++                if (pCreature->GetDistance(aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ) < 3)
++                    pCreature->RemoveFromWorld();
 +            }
 +        }
 +
-+        for (std::list<uint64>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
++        for (std::list<ObjectGuid>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +            {
-+                if (pCreature->GetDistance(aAddDespawnWPs[m_uiWaypoint].m_fX, aAddDespawnWPs[m_uiWaypoint].m_fY, aAddDespawnWPs[m_uiWaypoint].m_fZ) > 3)
-+                    return;
++                if (pCreature->GetDistance(aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ) < 3)
++                    pCreature->RemoveFromWorld();
 +            }
 +        }
-+        m_uiWaypoint++;
-+        AddsMoveToDespawn();
 +    }
 +
-+    // attacks the current charmer of razorgore
-+    void AttackOrbUser(Creature *pCreature)
++    void AttackNearestTarget(Creature* pCreature)
 +    {
-+        if (!pCreature)
++        float minRange = VISIBLE_RANGE;
++        float range;
++        Player* target = NULL;
++
++        Map::PlayerList const& players = m_creature->GetMap()->GetPlayers();
++        for(Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
++        {
++            if (Player* i_pl = itr->getSource())
++            {
++                if (i_pl->isTargetableForAttack())
++                {
++                    range = i_pl->GetDistance(pCreature);
++                    if (range < minRange)
++                    {
++                        minRange = range;
++                        target = i_pl;
++                    }
++                }
++            }
++        }
++
++        if (!target)
 +            return;
 +
-+        Creature *pRazorgore = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_RAZORGORE));
-+        if (pRazorgore && pRazorgore->isCharmed())
-+        {
-+            if (Unit *pUnit = pRazorgore->GetCharmerOrOwner())
-+            {
-+                pCreature->GetMotionMaster()->MoveChase(pUnit);
-+                pCreature->AddThreat(pUnit, 10000);
-+            }
-+        }
-+
++        pCreature->AI()->AttackStart(target);
 +    }
 +
-+    Phases GetPhase() { return m_Phase; }
 +
 +    // first spawn of eggs
 +    void SpawnEggs()
 +    {
 +        for(uint32 i = 0; i < MAX_EGGS; i++)
-+            m_uiDragonEggGUIDs.push_back(m_creature->SummonGameObject(177807, aEggSpawnLocs[i].m_fX, aEggSpawnLocs[i].m_fY, aEggSpawnLocs[i].m_fZ, urand(0, M_PI_F * 2), TEMPSUMMON_MANUAL_DESPAWN)->GetGUID());
++            m_uiDragonEggGUIDs.push_back(m_creature->SummonGameObject(177807, aEggSpawnLocs[i].m_fX, aEggSpawnLocs[i].m_fY, aEggSpawnLocs[i].m_fZ, urand(0, M_PI_F * 2), TEMPSUMMON_MANUAL_DESPAWN)->GetObjectGuid());
 +    }
 +
 +    // the respawn of eggs
 +    void RespawnAllEggs()
 +    {
 +        uint32 i = 0;
-+        for (std::list<uint64>::iterator itr = m_uiDragonEggGUIDs.begin(); itr != m_uiDragonEggGUIDs.end(); ++itr)
++        for (std::list<ObjectGuid>::iterator itr = m_uiDragonEggGUIDs.begin(); itr != m_uiDragonEggGUIDs.end(); ++itr)
 +        {
 +            GameObject *pGo = m_creature->GetMap()->GetGameObject(*itr);
 +            if (!pGo)
-+                *itr = m_creature->SummonGameObject(177807, aEggSpawnLocs[i].m_fX, aEggSpawnLocs[i].m_fY, aEggSpawnLocs[i].m_fZ, urand(0, M_PI_F * 2), TEMPSUMMON_MANUAL_DESPAWN)->GetGUID();
++                *itr = m_creature->SummonGameObject(177807, aEggSpawnLocs[i].m_fX, aEggSpawnLocs[i].m_fY, aEggSpawnLocs[i].m_fZ, urand(0, M_PI_F * 2), TEMPSUMMON_MANUAL_DESPAWN)->GetObjectGuid();
 +            i++;
 +        }
 +    }
@@ -313,13 +314,13 @@ index 82c2493..6c7bb91 100644
 +    // unsummon all adds and delete GUID lists
 +    void UnsummonAdds()
 +    {
-+        for (std::list<uint64>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
++        for (std::list<ObjectGuid>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +                m_creature->ForcedDespawn();
 +        }
 +
-+        for (std::list<uint64>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
++        for (std::list<ObjectGuid>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +                m_creature->ForcedDespawn();
@@ -331,9 +332,28 @@ index 82c2493..6c7bb91 100644
 +    void SummonedCreatureDespawn(Creature *pCreature)
 +    {
 +        if (pCreature->GetEntry() == NPC_DEATH_TALON_DRAGONSPAWN)
-+            m_uiDragonkinGUIDs.remove(pCreature->GetGUID());
++            m_uiDragonkinGUIDs.remove(pCreature->GetObjectGuid());
 +        else if (pCreature->GetEntry() == NPC_BLACKWING_LEGIONNAIRE || pCreature->GetEntry() == NPC_BLACKWING_MAGE)
-+            m_uiOrkGUIDs.remove(pCreature->GetGUID());
++            m_uiOrkGUIDs.remove(pCreature->GetObjectGuid());
++    }
++
++    void JustExceededSpawnDelay(Creature *pCreature)
++    {
++        if (!pCreature)
++            return;
++
++        // attack current orb user, if no user, attack nearest target
++        Creature *pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE);
++        if (pRazorgore && pRazorgore->isCharmed())
++        {
++            if (Unit *pUnit = pRazorgore->GetCharmerOrOwner())
++            {
++                pCreature->AddThreat(pUnit, 4000);
++                pCreature->AI()->AttackStart(pUnit);
++            }
++        }
++        else
++            AttackNearestTarget(pCreature);
 +    }
 +
 +    void Aggro (Unit *who) {}
@@ -342,41 +362,20 @@ index 82c2493..6c7bb91 100644
 +
 +    void UpdateAI(const uint32 uiDiff)
 +    {
-+        // reset if razorgore is outfight, moving home and phase is not "PHASE_GRETHOK"
-+        Creature* pRazorgore = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_RAZORGORE));
-+        if (!pRazorgore || !pRazorgore->isInCombat())
-+        {
-+            if (m_Phase != PHASE_NONE && pRazorgore->GetMotionMaster()->GetCurrentMovementGeneratorType() == HOME_MOTION_TYPE)
-+            {
-+                Reset();
-+                return;
-+            }
-+        }
++        if (!m_pInstance || m_pInstance->GetData(TYPE_RAZORGORE) == DONE)
++            return;
++
++        Creature* pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE);
++        if (!pRazorgore)
++            return;
++
++        // casts blue beam from trigger to razorgore
++        if (!pRazorgore->HasAura(SPELL_POSSES) && m_Phase != PHASE_FIGHT && m_Phase != PHASE_DONE)
++            m_creature->CastSpell(pRazorgore, SPELL_POSSES, true);
 +
 +        if (m_Phase == PHASE_NONE)
-+        {
-+            Creature *pGrethok = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_GRETHOK));
-+            if (pGrethok && pGrethok->isInCombat())
-+            {
-+                Creature *pRazorgore = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_RAZORGORE));
-+                if (!pRazorgore || pRazorgore->isDead())
-+                    return;
-+
-+                m_Phase = PHASE_GRETHOK;
-+                pRazorgore->SetInCombatWithZone();
-+            }
-+            else
-+                return;
-+        }
-+        // if grethok is dead, change phase
-+        else if (m_Phase == PHASE_GRETHOK)
-+        {
-+            Creature *pGrethok = m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_GRETHOK));
-+            if (!pGrethok || pGrethok->isDead())
-+                m_Phase = PHASE_EGGS;
-+            else
-+                return;
-+        }
++            return;
++        // no adds spawn during fight phase
 +        else if (m_Phase == PHASE_FIGHT)
 +        {
 +            // if GUID lists are empty, return;
@@ -386,8 +385,6 @@ index 82c2493..6c7bb91 100644
 +            CheckAddMovement();
 +            return;
 +        }
-+        else if (m_Phase != PHASE_EGGS)
-+            return;
 +
 +        // summon adds in all 8 rooms
 +        if (m_uiAddSummonTimer <= uiDiff)
@@ -395,36 +392,34 @@ index 82c2493..6c7bb91 100644
 +            for (uint8 i = 0; i < 8; i++)
 +            {
 +                Creature *pCreature = NULL;
-+                if (urand(0, 1))
++                if (urand(0, 1) && m_uiDragonkinGUIDs.size() < MAX_DRAGONKINS)
 +                {
-+                    if (m_uiDragonkinGUIDs.size() < MAX_DRAGONKINS)
-+                        pCreature = m_creature->SummonCreature(NPC_DEATH_TALON_DRAGONSPAWN, aSpawnLocs[i].m_fX, aSpawnLocs[i].m_fY, aSpawnLocs[i].m_fZ, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++                    pCreature = m_creature->SummonCreature(NPC_DEATH_TALON_DRAGONSPAWN, aSpawnLocs[i].m_fX, aSpawnLocs[i].m_fY, aSpawnLocs[i].m_fZ, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 50000);
 +
 +                    if (pCreature)
-+                        m_uiDragonkinGUIDs.push_back(pCreature->GetGUID());
++                        m_uiDragonkinGUIDs.push_back(pCreature->GetObjectGuid());
 +                }
 +                else
 +                {
 +                    if (m_uiOrkGUIDs.size() < MAX_ORKS)
 +                    {
 +                        if (urand(0, 1))
-+                            pCreature = m_creature->SummonCreature(NPC_BLACKWING_LEGIONNAIRE, aSpawnLocs[i].m_fX, aSpawnLocs[i].m_fY, aSpawnLocs[i].m_fZ, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++                            pCreature = m_creature->SummonCreature(NPC_BLACKWING_LEGIONNAIRE, aSpawnLocs[i].m_fX, aSpawnLocs[i].m_fY, aSpawnLocs[i].m_fZ, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 50000);
 +                        else
-+                            pCreature = m_creature->SummonCreature(NPC_BLACKWING_MAGE, aSpawnLocs[i].m_fX, aSpawnLocs[i].m_fY, aSpawnLocs[i].m_fZ, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 5000);
++                            pCreature = m_creature->SummonCreature(NPC_BLACKWING_MAGE, aSpawnLocs[i].m_fX, aSpawnLocs[i].m_fY, aSpawnLocs[i].m_fZ, 0, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 50000);
 +
 +                        if (pCreature)
-+                            m_uiOrkGUIDs.push_back(pCreature->GetGUID());
++                            m_uiOrkGUIDs.push_back(pCreature->GetObjectGuid());
 +                    }
 +                }
-+                AttackOrbUser(pCreature);
 +            }
 +            m_uiAddSummonTimer = 15000;
 +        }
 +        else
 +            m_uiAddSummonTimer -= uiDiff;
 +    }
-+};
-+
+ };
+ 
 +CreatureAI* GetAI_mob_blackwing_orb_trigger(Creature* pCreature)
 +{
 +    return new mob_blackwing_orb_triggerAI(pCreature);
@@ -433,48 +428,196 @@ index 82c2493..6c7bb91 100644
 +/*######
 +## boss_razorgore
 +######*/
++
  struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
  {
      boss_razorgoreAI(Creature* pCreature) : ScriptedAI(pCreature)
      {
          m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
-+        SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_USE_DRAGON_ORB);
-+        TempSpell->EffectImplicitTargetA[0] = TARGET_SELF;
-+        TempSpell->EffectImplicitTargetA[1] = TARGET_SELF;
-+
++        // should cast spell on all targets in area
++        SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_FIREBALL);
++        TempSpell->EffectImplicitTargetA[0] = TARGET_ALL_ENEMY_IN_AREA;
++        TempSpell->EffectImplicitTargetA[1] = TARGET_NONE;
          Reset();
      }
  
-@@ -59,13 +424,24 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+@@ -57,18 +444,24 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+ 
+     void Reset()
+     {
+-        m_uiCleaveTimer         = 15000;                       // These times are probably wrong
++        m_uiCleaveTimer         = 15000;
          m_uiWarStompTimer       = 35000;
          m_uiConflagrationTimer  = 12000;
          m_uiFireballVolleyTimer = 7000;
-+    }
  
+     }
+-
+-    void Aggro(Unit* pWho)
++ 
 +    void DamageTaken(Unit *pWho, uint32 &uiDmg)
-+    {
-+        if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)m_creature->GetMap()->GetCreature(m_pInstance->GetData64(DATA_ORB_TRIGGER))->AI())
+     {
+-        // TODO Temporarily add this InstData setting, must be started with Phase 1 which is not yet implemented
+-        if (m_pInstance)
+-            m_pInstance->SetData(TYPE_RAZORGORE, IN_PROGRESS);
++        if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER)->AI())
 +        {
-+            if (pTriggerAI->GetPhase() != PHASE_FIGHT && uiDmg >= m_creature->GetHealth())
++            if (pTriggerAI->m_Phase != PHASE_FIGHT && uiDmg >= m_creature->GetHealth())
 +            {
 +                uiDmg = 0;
-+                //DoCastSpellIfCan(m_creature, 
++                m_creature->MonsterYell(SAY_DEATH, 0);
++                m_creature->CastSpell(m_creature, SPELL_FIREBALL, true);
 +            }
 +        }
      }
  
-     void Aggro(Unit* pWho)
-     {
-         // TODO Temporarily add this InstData setting, must be started with Phase 1 which is not yet implemented
--        if (m_pInstance)
-+        if (m_pInstance && m_pInstance->GetData(TYPE_RAZORGORE) != IN_PROGRESS)
-             m_pInstance->SetData(TYPE_RAZORGORE, IN_PROGRESS);
+     void JustDied(Unit* pKiller)
+@@ -76,13 +469,22 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+         if (m_pInstance)
+             m_pInstance->SetData(TYPE_RAZORGORE, DONE);
+ 
+-        DoScriptText(SAY_DEATH, m_creature);
++        if (Creature* pOrbTrigger = m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER))
++        {
++            if (mob_blackwing_orb_triggerAI *pOrbTriggerAI = (mob_blackwing_orb_triggerAI*)pOrbTrigger->AI())
++                pOrbTriggerAI->m_Phase = PHASE_DONE;
++        }
      }
  
-@@ -142,12 +518,69 @@ CreatureAI* GetAI_boss_razorgore(Creature* pCreature)
+     void JustReachedHome()
+     {
+         if (m_pInstance)
++        {
+             m_pInstance->SetData(TYPE_RAZORGORE, FAIL);
++            if (Creature *pOrbTrigger = m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER))
++                    if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pOrbTrigger->AI())
++                        pTriggerAI->Reset();
++        }
+     }
+ 
+     void UpdateAI(const uint32 uiDiff)
+@@ -121,7 +523,7 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+         if (m_uiConflagrationTimer < uiDiff)
+         {
+             if (DoCastSpellIfCan(m_creature, SPELL_CONFLAGRATION) == CAST_OK)
+-                m_uiConflagrationTimer = 12000;
++                m_uiConflagrationTimer = urand(12000, 24000);
+         }
+         else
+             m_uiConflagrationTimer -= uiDiff;
+@@ -144,12 +546,188 @@ CreatureAI* GetAI_boss_razorgore(Creature* pCreature)
      return new boss_razorgoreAI(pCreature);
  }
  
+-void AddSC_boss_razorgore()
++/*######
++## npc grethok the controller
++######*/
++
++enum
+ {
++    SPELL_ARCANE_MISSILES       = 22273,
++    SPELL_SLOW                  = 13747,
++    SPELL_GREATER_POLYMORPH     = 22274,
++    SPELL_DOMINATE_MIND         = 14515,
++};
++
++struct MANGOS_DLL_DECL npc_grethokAI : public ScriptedAI
++{
++    npc_grethokAI(Creature* pCreature) : ScriptedAI(pCreature)
++    {
++        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
++        Reset();
++    }
++
++    ScriptedInstance *m_pInstance;
++
++    // timer
++    uint32 m_uiArcaneMissilesTimer;
++    uint32 m_uiSlowTimer;
++    uint32 m_uiGreaterPolymprphTimer;
++    uint32 m_uiDominateMindTimer;
++
++    void Reset()
++    {
++        m_uiArcaneMissilesTimer     = 0;
++        m_uiSlowTimer               = urand(15000, 21000);
++        m_uiGreaterPolymprphTimer   = urand(8000, 11000);
++        m_uiDominateMindTimer       = urand(11000, 14000);
++    }
++
++    void Aggro(Unit *pWho)
++    {
++        if (m_pInstance && m_pInstance->GetData(TYPE_RAZORGORE) != IN_PROGRESS)
++            m_pInstance->SetData(TYPE_RAZORGORE, IN_PROGRESS);
++
++        // set phase to PHASE_ONE to start summon timer
++        if (Creature* pOrbTrigger = m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER))
++        {
++            if (mob_blackwing_orb_triggerAI *pOrbTriggerAI = (mob_blackwing_orb_triggerAI*)pOrbTrigger->AI())
++                pOrbTriggerAI->m_Phase = PHASE_ONE;
++        }
++
++        // when gets aggro, pull Razorgore
++        if (Creature* pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE))
++        {
++            if (pRazorgore->isAlive())
++                pRazorgore->SetInCombatWithZone();
++        }
++
++        m_creature->CallForHelp(10.0f);
++    }
++
++    void UpdateAI(const uint32 uiDiff)
++    {
++        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
++            return;
++
++        // cast Arcane Missiles
++        if (m_uiArcaneMissilesTimer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_ARCANE_MISSILES) == CAST_OK)
++                m_uiArcaneMissilesTimer = urand(5000, 8000);
++        }
++        else
++            m_uiArcaneMissilesTimer -= uiDiff;
++
++        // cast Slow
++        if (m_uiArcaneMissilesTimer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SLOW) == CAST_OK)
++                m_uiArcaneMissilesTimer = urand(10000, 17000);
++        }
++        else
++            m_uiArcaneMissilesTimer -= uiDiff;
++
++        // cast Greater Polymorph
++        if (m_uiArcaneMissilesTimer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_GREATER_POLYMORPH) == CAST_OK)
++                m_uiArcaneMissilesTimer = urand(20000, 24000);
++        }
++        else
++            m_uiArcaneMissilesTimer -= uiDiff;
++
++        // cast Dominate Mind
++        if (m_uiArcaneMissilesTimer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_DOMINATE_MIND) == CAST_OK)
++                m_uiArcaneMissilesTimer = urand(16000, 20000);
++        }
++        else
++            m_uiArcaneMissilesTimer -= uiDiff;
++
++        DoMeleeAttackIfReady();
++    }
++};
++
++CreatureAI* GetAI_npc_grethok(Creature* pCreature)
++{
++    return new npc_grethokAI(pCreature);
++}
++
 +/*######
 +## go_orb_of_domintaion
 +######*/
@@ -482,19 +625,21 @@ index 82c2493..6c7bb91 100644
 +{
 +    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
 +    {
-+        // if exhausted return
-+        if (!pPlayer || pPlayer->HasAura(SPELL_MIND_EXHAUSTION, EFFECT_INDEX_0))
++        Creature *pTrigger = pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER);
++        if (!pTrigger || !pPlayer || pPlayer->HasAura(SPELL_MIND_EXHAUSTION))
 +            return true;
 +
 +        // if razorgore is already charmed
-+        mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pPlayer->GetMap()->GetCreature(pInstance->GetData64(DATA_ORB_TRIGGER))->AI();
-+        Creature *pCreature = pPlayer->GetMap()->GetCreature(pInstance->GetData64(DATA_RAZORGORE));
-+        if (!pCreature || pCreature->isCharmed() || !pTriggerAI || pTriggerAI->GetPhase() != PHASE_EGGS)
++        mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pTrigger->AI();
++        Creature *pCreature = pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE);
++        if (!pCreature || pCreature->isCharmed() || !pTriggerAI || pTriggerAI->m_Phase == PHASE_FIGHT || pTriggerAI->m_Phase == PHASE_DONE)
 +            return true;
 +
++        pCreature->AddThreat(pPlayer, 50000);
 +        pPlayer->CastSpell(pCreature, SPELL_DRAGON_ORB, true);
++        pCreature->AddThreat(pPlayer, 50000);
 +    }
-+    else
++   else
 +        return true;
 +
 +    return false;
@@ -505,10 +650,14 @@ index 82c2493..6c7bb91 100644
 +######*/
 +bool GOUse_go_dark_dragon_egg(Player* pPlayer, GameObject* pGo)
 +{
-+    if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
++   if (ScriptedInstance* pInstance = (ScriptedInstance*)pGo->GetInstanceData())
 +    {
-+        if (mob_blackwing_orb_triggerAI *pTrigger = (mob_blackwing_orb_triggerAI*)pGo->GetMap()->GetCreature(pInstance->GetData64(DATA_ORB_TRIGGER))->AI())
-+            pTrigger->DestroyEgg();
++        Creature *pTrigger = pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER);
++        if (!pTrigger)
++            return true;
++
++        if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pTrigger->AI())
++            pTriggerAI->DestroyEgg();
 +
 +        TemporarySummonGO *pTemp = (TemporarySummonGO*)pGo;
 +        if (pTemp)
@@ -517,404 +666,81 @@ index 82c2493..6c7bb91 100644
 +    return false;
 +}
 +
- void AddSC_boss_razorgore()
- {
--    Script* pNewScript;
-+    Script* newscript;
-+
-+    newscript = new Script;
-+    newscript->Name = "boss_razorgore";
-+    newscript->GetAI = &GetAI_boss_razorgore;
-+    newscript->RegisterSelf();
-+
-+    newscript = new Script;
-+    newscript->Name = "mob_blackwing_orb_trigger";
-+    newscript->GetAI = &GetAI_mob_blackwing_orb_trigger;
-+    newscript->RegisterSelf();
-+
-+    newscript = new Script;
-+    newscript->Name = "go_orb_of_domintaion";
-+    newscript->pGOUse = &GOUse_go_orb_of_domintaion;
-+    newscript->RegisterSelf();
++void AddSC_boss_razorgore()
++ {
+     Script* pNewScript;
  
--    pNewScript = new Script;
--    pNewScript->Name = "boss_razorgore";
--    pNewScript->GetAI = &GetAI_boss_razorgore;
--    pNewScript->RegisterSelf();
-+    newscript = new Script;
-+    newscript->Name = "go_dark_dragon_egg";
-+    newscript->pGOUse = &GOUse_go_dark_dragon_egg;
-+    newscript->RegisterSelf();
- }
+     pNewScript = new Script;
+     pNewScript->Name = "boss_razorgore";
+     pNewScript->GetAI = &GetAI_boss_razorgore;
+     pNewScript->RegisterSelf();
+-}
++
++    pNewScript = new Script;
++    pNewScript->Name = "mob_blackwing_orb_trigger";
++    pNewScript->GetAI = &GetAI_mob_blackwing_orb_trigger;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "npc_grethok";
++    pNewScript->GetAI = &GetAI_npc_grethok;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "go_orb_of_domintaion";
++    pNewScript->pGOUse = &GOUse_go_orb_of_domintaion;
++    pNewScript->RegisterSelf();
++
++    pNewScript = new Script;
++    pNewScript->Name = "go_dark_dragon_egg";
++    pNewScript->pGOUse = &GOUse_go_dark_dragon_egg;
++    pNewScript->RegisterSelf();
++ }
 diff --git a/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp b/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
-index 3bf2b7d..a64415e 100644
+index 7493116..ae1ea78 100644
 --- a/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
 +++ b/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
-@@ -24,159 +24,243 @@ EndScriptData */
- #include "precompiled.h"
- #include "blackwing_lair.h"
- 
--
--instance_blackwing_lair::instance_blackwing_lair(Map* pMap) : ScriptedInstance(pMap),
--    m_uiRazorgoreEnterDoorGUID(0),
--    m_uiRazorgoreExitDoorGUID(0),
--    m_uiVaelastraszDoorGUID(0),
--    m_uiLashlayerDoorGUID(0),
--    m_uiChromaggusEnterDoorGUID(0),
--    m_uiChromaggusExitDoorGUID(0),
--    m_uiChromaggusSideDoorGUID(0),
--    m_uiNefarianDoorGUID(0)
-+struct MANGOS_DLL_DECL instance_blackwing_lair : public ScriptedInstance
- {
--    Initialize();
--}
-+    instance_blackwing_lair(Map* pMap) : ScriptedInstance(pMap) {Initialize();};
- 
--void instance_blackwing_lair::Initialize()
--{
--    memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
--}
-+    void Initialize()
-+    {
-+        memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
-+        m_uiRazorgoreEnterDoorGUID  = 0;
-+        m_uiRazorgoreExitDoorGUID   = 0;
-+        m_uiVaelastraszDoorGUID     = 0;
-+        m_uiLashlayerDoorGUID       = 0;
-+        m_uiChromaggusEnterDoorGUID = 0;
-+        m_uiChromaggusExitDoorGUID  = 0;
-+        m_uiChromaggusSideDoorGUID  = 0;
-+        m_uiNefarianDoorGUID        = 0;
-+        m_uiOrbOfDominationGUID     = 0;
-+        m_uiRazagoreGUID            = 0;
-+        m_uiGrethokGUID             = 0;
-+        m_uiOrbTriggerGUID          = 0;
-+    }
- 
--bool instance_blackwing_lair::IsEncounterInProgress() const
--{
--    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
-+    std::string m_strInstData;
-+    uint32 m_auiEncounter[MAX_ENCOUNTER];
-+
-+    // Doors
-+    uint64 m_uiRazorgoreEnterDoorGUID;
-+    uint64 m_uiRazorgoreExitDoorGUID;
-+    uint64 m_uiVaelastraszDoorGUID;
-+    uint64 m_uiLashlayerDoorGUID;
-+    uint64 m_uiChromaggusEnterDoorGUID;
-+    uint64 m_uiChromaggusExitDoorGUID;
-+    uint64 m_uiChromaggusSideDoorGUID;
-+    uint64 m_uiOrbOfDominationGUID;
-+    uint64 m_uiNefarianDoorGUID;
-+
-+    // Encounters & Trash
-+    uint64 m_uiRazagoreGUID;
-+    uint64 m_uiGrethokGUID;
-+    uint64 m_uiOrbTriggerGUID;
-+    std::list<uint64> m_uilBlackwingGuardsmanGUIDs;
-+
-+    bool IsEncounterInProgress() const
-     {
--        if (m_auiEncounter[i] == IN_PROGRESS)
--            return true;
-+        for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
-+        {
-+            if (m_auiEncounter[i] == IN_PROGRESS)
-+                return true;
-+        }
-+        return false;
-     }
--    return false;
--}
- 
--void instance_blackwing_lair::OnObjectCreate(GameObject* pGo)
--{
--    switch(pGo->GetEntry())
-+    void OnCreatureCreate(Creature *pCreature)
-     {
--        case GO_DOOR_RAZORGORE_ENTER:
--            m_uiRazorgoreEnterDoorGUID = pGo->GetGUID();
--            break;
--        case GO_DOOR_RAZORGORE_EXIT:
--            m_uiRazorgoreExitDoorGUID = pGo->GetGUID();
--            if (m_auiEncounter[TYPE_RAZORGORE] == DONE)
--                pGo->SetGoState(GO_STATE_ACTIVE);
--            break;
--        case GO_DOOR_NEFARIAN:
--            m_uiNefarianDoorGUID = pGo->GetGUID();
--            break;
--        case GO_DOOR_CHROMAGGUS_ENTER:
--            m_uiChromaggusEnterDoorGUID = pGo->GetGUID();
--            break;
--        case GO_DOOR_CHROMAGGUS_SIDE:
--            m_uiChromaggusSideDoorGUID = pGo->GetGUID();
-+        switch(pCreature->GetEntry())
-+        {
-+        case NPC_RAZORGORE:
-+            m_uiRazagoreGUID = pCreature->GetGUID();
+@@ -53,8 +53,14 @@ void instance_blackwing_lair::OnCreatureCreate(Creature* pCreature)
+             if (pCreature->IsWithinDist2d(aNefariusSpawnLoc[0], aNefariusSpawnLoc[1], 50.0f))
+                 m_lTechnicianGuids.push_back(pCreature->GetObjectGuid());
              break;
--        case GO_DOOR_CHROMAGGUS_EXIT:
--            m_uiChromaggusExitDoorGUID = pGo->GetGUID();
--            if (m_auiEncounter[TYPE_CHROMAGGUS] == DONE)
--                pGo->SetGoState(GO_STATE_ACTIVE);
-+        case NPC_GRETHOK:
-+            m_uiGrethokGUID = pCreature->GetGUID();
-             break;
--        case GO_DOOR_VAELASTRASZ:
--            m_uiVaelastraszDoorGUID = pGo->GetGUID();
--            if (m_auiEncounter[TYPE_VAELASTRASZ] == DONE)
--                pGo->SetGoState(GO_STATE_ACTIVE);
-+        case NPC_ORB_TRIGGER:
-+            m_uiOrbTriggerGUID = pCreature->GetGUID();
-             break;
--        case GO_DOOR_LASHLAYER:
--            m_uiLashlayerDoorGUID = pGo->GetGUID();
--            if (m_auiEncounter[TYPE_LASHLAYER] == DONE)
--                pGo->SetGoState(GO_STATE_ACTIVE);
 +        case NPC_BLACKWING_GUARDSMAN:
-+            m_uilBlackwingGuardsmanGUIDs.push_back(pCreature->GetGUID());
++            m_lGuardsmanGuids.push_back(pCreature->GetObjectGuid());
++            break;
+         case NPC_VAELASTRASZ:
+-            m_mNpcEntryGuidStore[NPC_VAELASTRASZ] = pCreature->GetObjectGuid();
++        case NPC_RAZORGORE:
++        case NPC_GRETHOK:
++        case NPC_ORB_TRIGGER:
++            m_mNpcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
              break;
-+        }
      }
--}
- 
--void instance_blackwing_lair::SetData(uint32 uiType, uint32 uiData)
--{
--    switch(uiType)
-+    uint64 GetData64(uint32 uiTypeID)
+ }
+@@ -97,10 +103,25 @@ void instance_blackwing_lair::SetData(uint32 uiType, uint32 uiData)
+     switch(uiType)
      {
--        case TYPE_RAZORGORE:
+         case TYPE_RAZORGORE:
 -            m_auiEncounter[uiType] = uiData;
--            DoUseDoorOrButton(m_uiRazorgoreEnterDoorGUID);
--            if(uiData == DONE)
--                DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
--            break;
--        case TYPE_VAELASTRASZ:
--            m_auiEncounter[uiType] = uiData;
--            // Prevent the players from running back to the first room
--            DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
--            if(uiData == DONE)
--                DoUseDoorOrButton(m_uiVaelastraszDoorGUID);
--            break;
--        case TYPE_LASHLAYER:
--            m_auiEncounter[uiType] = uiData;
--            if(uiData == DONE)
--                DoUseDoorOrButton(m_uiLashlayerDoorGUID);
--            break;
--        case TYPE_FIREMAW:
--        case TYPE_EBONROC:
--        case TYPE_FLAMEGOR:
--            m_auiEncounter[uiType] = uiData;
--            break;
--        case TYPE_CHROMAGGUS:
--            m_auiEncounter[uiType] = uiData;
--            DoUseDoorOrButton(m_uiChromaggusEnterDoorGUID);
--            if (uiData == DONE)
--                DoUseDoorOrButton(m_uiChromaggusExitDoorGUID);
--            break;
--        case TYPE_NEFARIAN:
--            m_auiEncounter[uiType] = uiData;
--            DoUseDoorOrButton(m_uiNefarianDoorGUID);
--            break;
-+        switch(uiTypeID)
-+        {
-+        case DATA_RAZORGORE:
-+            return m_uiRazagoreGUID;
-+        case DATA_ORB_OF_DOMINATION:
-+            return m_uiOrbOfDominationGUID;
-+        case DATA_GRETHOK:
-+            return m_uiGrethokGUID;
-+        case DATA_ORB_TRIGGER:
-+            return m_uiOrbTriggerGUID;
-+        }
-+        return NULL;
-+    }
+-            DoUseDoorOrButton(GO_DOOR_RAZORGORE_ENTER);
+             if (uiData == DONE)
+                 DoUseDoorOrButton(GO_DOOR_RAZORGORE_EXIT);
++            else if (uiData == FAIL)
++            {
++                // Respawn Grethok
++                if (Creature *pGrethok = GetSingleCreatureFromStorage(NPC_GRETHOK))
++                    if (pGrethok->isDead())
++                        pGrethok->Respawn();
 +
-+    void OnObjectCreate(GameObject* pGo)
-+    {
-+        switch(pGo->GetEntry())
-+        {
-+            case GO_DOOR_RAZORGORE_ENTER:
-+                m_uiRazorgoreEnterDoorGUID = pGo->GetGUID();
-+                break;
-+            case GO_DOOR_RAZORGORE_EXIT:
-+                m_uiRazorgoreExitDoorGUID = pGo->GetGUID();
-+                if (m_auiEncounter[TYPE_RAZORGORE] == DONE)
-+                    pGo->SetGoState(GO_STATE_ACTIVE);
-+                break;
-+            case GO_DOOR_NEFARIAN:
-+                m_uiNefarianDoorGUID = pGo->GetGUID();
-+                break;
-+            case GO_DOOR_CHROMAGGUS_ENTER:
-+                m_uiChromaggusEnterDoorGUID = pGo->GetGUID();
-+                break;
-+            case GO_DOOR_CHROMAGGUS_SIDE:
-+                m_uiChromaggusSideDoorGUID = pGo->GetGUID();
-+                break;
-+            case GO_DOOR_CHROMAGGUS_EXIT:
-+                m_uiChromaggusExitDoorGUID = pGo->GetGUID();
-+                if (m_auiEncounter[TYPE_CHROMAGGUS] == DONE)
-+                    pGo->SetGoState(GO_STATE_ACTIVE);
-+                break;
-+            case GO_DOOR_VAELASTRASZ:
-+                m_uiVaelastraszDoorGUID = pGo->GetGUID();
-+                if (m_auiEncounter[TYPE_VAELASTRASZ] == DONE)
-+                    pGo->SetGoState(GO_STATE_ACTIVE);
-+                break;
-+            case GO_DOOR_LASHLAYER:
-+                m_uiLashlayerDoorGUID = pGo->GetGUID();
-+                if (m_auiEncounter[TYPE_LASHLAYER] == DONE)
-+                    pGo->SetGoState(GO_STATE_ACTIVE);
-+                break;
-+            case GO_ORB_OF_DOMINATION:
-+                m_uiOrbOfDominationGUID = pGo->GetGUID();
-+                break;
-+            case GO_BLACK_DRAGON_EGG:
-+                pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND);
-+                break;
-+        }
-     }
- 
--    if (uiData == DONE)
-+    void SetData(uint32 uiType, uint32 uiData)
-     {
--        OUT_SAVE_INST_DATA;
-+        switch(uiType)
-+        {
-+            case TYPE_RAZORGORE:
-+                debug_log("razorgore uiType = %u", uiType);
-+                DoUseDoorOrButton(m_uiRazorgoreEnterDoorGUID);
-+                if(uiData == DONE)
-+                    DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
-+                else if (uiData == FAIL)
++                // Respawn adds of Grethok
++                for (GUIDList::const_iterator itr = m_lGuardsmanGuids.begin(); itr != m_lGuardsmanGuids.end(); ++itr)
 +                {
-+                    // respawn Grethok adds
-+                    for (std::list<uint64>::iterator itr = m_uilBlackwingGuardsmanGUIDs.begin(); itr != m_uilBlackwingGuardsmanGUIDs.end(); ++itr)
-+                    {
-+                        if (Creature *pCreature = instance->GetCreature(*itr))
-+                        {
-+                            if (pCreature->isDead())
-+                                pCreature->Respawn();
-+                        }
-+                    }
-+                    // respawn Grethok the Controler
-+                    if (Creature *pGrethok = instance->GetCreature(m_uiGrethokGUID))
-+                    {
-+                        if (pGrethok->isDead())
-+                            pGrethok->Respawn();
-+                    }
-+                    uiData = NOT_STARTED;
++                    if (Creature *pCreature = instance->GetCreature(*itr))
++                        if (pCreature->isDead())
++                            pCreature->Respawn();
 +                }
-+                m_auiEncounter[uiType] = uiData;
-+                break;
-+            case TYPE_VAELASTRASZ:
-+                m_auiEncounter[uiType] = uiData;
-+                // Prevent the players from running back to the first room
-+                DoUseDoorOrButton(m_uiRazorgoreExitDoorGUID);
-+                if(uiData == DONE)
-+                    DoUseDoorOrButton(m_uiVaelastraszDoorGUID);
-+                break;
-+            case TYPE_LASHLAYER:
-+                m_auiEncounter[uiType] = uiData;
-+                if(uiData == DONE)
-+                    DoUseDoorOrButton(m_uiLashlayerDoorGUID);
-+                break;
-+            case TYPE_FIREMAW:
-+            case TYPE_EBONROC:
-+            case TYPE_FLAMEGOR:
-+                m_auiEncounter[uiType] = uiData;
-+                break;
-+            case TYPE_CHROMAGGUS:
-+                m_auiEncounter[uiType] = uiData;
-+                DoUseDoorOrButton(m_uiChromaggusEnterDoorGUID);
-+                if (uiData == DONE)
-+                    DoUseDoorOrButton(m_uiChromaggusExitDoorGUID);
-+                break;
-+            case TYPE_NEFARIAN:
-+                m_auiEncounter[uiType] = uiData;
-+                DoUseDoorOrButton(m_uiNefarianDoorGUID);
-+                break;
-+        }
- 
--        std::ostringstream saveStream;
--        saveStream << m_auiEncounter[0] << " " << m_auiEncounter[1] << " " << m_auiEncounter[2] << " "
--            << m_auiEncounter[3] << " " << m_auiEncounter[4] << " " << m_auiEncounter[5] << " "
--            << m_auiEncounter[6] << " " << m_auiEncounter[7];
-+        if (uiData == DONE)
-+        {
-+            OUT_SAVE_INST_DATA;
- 
--        m_strInstData = saveStream.str();
-+            std::ostringstream saveStream;
-+            saveStream << m_auiEncounter[0] << " " << m_auiEncounter[1] << " " << m_auiEncounter[2] << " "
-+                << m_auiEncounter[3] << " " << m_auiEncounter[4] << " " << m_auiEncounter[5] << " "
-+                << m_auiEncounter[6] << " " << m_auiEncounter[7];
- 
--        SaveToDB();
--        OUT_SAVE_INST_DATA_COMPLETE;
-+            m_strInstData = saveStream.str();
-+
-+            SaveToDB();
-+            OUT_SAVE_INST_DATA_COMPLETE;
-+        }
-     }
--}
- 
--void instance_blackwing_lair::Load(const char* chrIn)
--{
--    if (!chrIn)
-+    void Load(const char* chrIn)
-     {
--        OUT_LOAD_INST_DATA_FAIL;
--        return;
--    }
-+        if (!chrIn)
-+        {
-+            OUT_LOAD_INST_DATA_FAIL;
-+            return;
-+        }
- 
--    OUT_LOAD_INST_DATA(chrIn);
-+        OUT_LOAD_INST_DATA(chrIn);
- 
--    std::istringstream loadStream(chrIn);
--    loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
--        >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6] >> m_auiEncounter[7];
-+        std::istringstream loadStream(chrIn);
-+        loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
-+            >> m_auiEncounter[4] >> m_auiEncounter[5] >> m_auiEncounter[6] >> m_auiEncounter[7];
- 
--    for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
--    {
--        if (m_auiEncounter[i] == IN_PROGRESS)
--            m_auiEncounter[i] = NOT_STARTED;
--    }
-+        for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
-+        {
-+            if (m_auiEncounter[i] == IN_PROGRESS)
-+                m_auiEncounter[i] = NOT_STARTED;
-+        }
- 
--    OUT_LOAD_INST_DATA_COMPLETE;
--}
-+        OUT_LOAD_INST_DATA_COMPLETE;
-+    }
- 
--uint32 instance_blackwing_lair::GetData(uint32 uiType)
--{
--    if (uiType < MAX_ENCOUNTER)
--        return m_auiEncounter[uiType];
-+    uint32 GetData(uint32 uiType)
-+    {
-+        if (uiType < MAX_ENCOUNTER)
-+            return m_auiEncounter[uiType];
- 
--    return 0;
--}
-+        return 0;
-+    }
-+};
- 
- InstanceData* GetInstanceData_instance_blackwing_lair(Map* pMap)
- {
++            }
++            m_auiEncounter[uiType] = uiData;
++            DoUseDoorOrButton(GO_DOOR_RAZORGORE_ENTER);
+             break;
+         case TYPE_VAELASTRASZ:
+             m_auiEncounter[uiType] = uiData;

@@ -1,0 +1,27 @@
+diff --git a/src/game/SpellAuras.cpp b/src/game/SpellAuras.cpp
+index 2540df4..8b488e0 100644
+--- a/src/game/SpellAuras.cpp
++++ b/src/game/SpellAuras.cpp
+@@ -1202,11 +1202,8 @@ void Aura::TriggerSpell()
+ //                    // Corrupt Medivh
+ //                    case 31326: break;
+                     case 31347:                             // Doom
+-                    {
+-                        target->CastSpell(target,31350,true);
+                         target->DealDamage(target, target->GetHealth(), NULL, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, NULL, false);
+                         return;
+-                    }
+                     case 31373:                             // Spellcloth
+                     {
+                         // Summon Elemental after create item
+@@ -4230,6 +4227,10 @@ void Aura::HandlePeriodicTriggerSpell(bool apply, bool /*Real*/)
+                     // Cast Wrath of the Plaguebringer if not dispelled
+                     target->CastSpell(target, 29214, true, 0, this);
+                 return;
++            case 31347:                                     // Doom
++                if (m_removeMode == AURA_REMOVE_BY_DEATH && m_removeMode != AURA_REMOVE_BY_DEFAULT)
++                    target->CastSpell(target,31350,true);
++                return;
+             case 42783:                                     //Wrath of the Astrom...
+                 if (m_removeMode == AURA_REMOVE_BY_EXPIRE && GetEffIndex() + 1 < MAX_EFFECT_INDEX)
+                     target->CastSpell(target, GetSpellProto()->CalculateSimpleValue(SpellEffectIndex(GetEffIndex()+1)), true);

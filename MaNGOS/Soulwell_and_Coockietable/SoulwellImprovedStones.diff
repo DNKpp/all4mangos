@@ -1,0 +1,22 @@
+diff --git a/src/game/SpellEffects.cpp b/src/game/SpellEffects.cpp
+index 9e4ae53..0c9f180 100644
+--- a/src/game/SpellEffects.cpp
++++ b/src/game/SpellEffects.cpp
+@@ -5976,6 +5976,17 @@ void Spell::EffectTransmitted(SpellEffectIndex eff_idx)
+ {
+     uint32 name_id = m_spellInfo->EffectMiscValue[eff_idx];
+ 
++    // spell "summon soulwell"; change go_id for caster skill lvl
++    if (m_spellInfo->Id == 29886 && m_caster->getClass() == CLASS_WARLOCK && m_caster->GetTypeId() == TYPEID_PLAYER)
++    {
++        if (m_caster->HasAura(18692))           // improved life stone (rank 1)
++            name_id   = 183510;
++        else if (m_caster->HasAura(18693))      // improved life stone (rank 2)
++            name_id   = 183511;
++        else                                    // normal life stone
++            name_id   = 181621;
++    }
++
+     GameObjectInfo const* goinfo = ObjectMgr::GetGameObjectInfo(name_id);
+ 
+     if (!goinfo)

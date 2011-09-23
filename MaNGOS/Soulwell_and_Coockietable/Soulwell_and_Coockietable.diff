@@ -1,0 +1,39 @@
+diff --git a/src/game/GameObject.cpp b/src/game/GameObject.cpp
+index fb5e5e3..c732564 100644
+--- a/src/game/GameObject.cpp
++++ b/src/game/GameObject.cpp
+@@ -1368,6 +1368,34 @@ void GameObject::Use(Unit* user)
+                     return;
+             }
+ 
++            SpellEntry const *TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(info->spellcaster.spellId);
++            // check if spell has Effect "SPELL_EFFECT_CREATE_ITEM"
++            for (uint8 i = 0; i < 3; i++)
++            {
++                if (TempSpell->Effect[i] == SPELL_EFFECT_CREATE_ITEM)
++                {
++                    ItemPosCountVec dest;
++                    uint32 no_space = 0;
++                    uint32 num_to_add = TempSpell->EffectBasePoints[i];
++                    InventoryResult msg = ((Player*)user)->CanStoreNewItem( NULL_BAG, NULL_SLOT, dest, TempSpell->EffectItemType[i], num_to_add, &no_space );
++                    if ( msg != EQUIP_ERR_OK )
++                    {
++                        // convert to possible store amount
++                        if (msg == EQUIP_ERR_INVENTORY_FULL || msg == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS)
++                            num_to_add -= no_space;
++                        else
++                            num_to_add = 0;
++
++                        // return if not able to create item
++                        if (!num_to_add)
++                        {
++                            ((Player*)user)->SendEquipError( msg, NULL, NULL, TempSpell->EffectItemType[i] );
++                            return;
++                        }
++                    }
++                }
++            }
++
+             spellId = info->spellcaster.spellId;
+ 
+             AddUse();

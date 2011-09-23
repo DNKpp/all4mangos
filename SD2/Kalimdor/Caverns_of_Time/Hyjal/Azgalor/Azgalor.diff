@@ -1,0 +1,124 @@
+diff --git a/scripts/kalimdor/caverns_of_time/hyjal/boss_azgalor.cpp b/scripts/kalimdor/caverns_of_time/hyjal/boss_azgalor.cpp
+index 31f009f..f81941e 100644
+--- a/scripts/kalimdor/caverns_of_time/hyjal/boss_azgalor.cpp
++++ b/scripts/kalimdor/caverns_of_time/hyjal/boss_azgalor.cpp
+@@ -38,22 +38,42 @@ enum
+     SPELL_DOOM              = 31347,
+     SPELL_HOWL_OF_AZGALOR   = 31344,
+     SPELL_RAIN_OF_FIRE      = 31340,
++    SPELL_ENRAGE            = 26662,
+ };
+ 
+ struct MANGOS_DLL_DECL boss_azgalorAI : public ScriptedAI
+ {
+     boss_azgalorAI(Creature* pCreature) : ScriptedAI(pCreature)
+     {
++        // effect radius to high, set to 99yards (from 5000)
++        SpellEntry* TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_HOWL_OF_AZGALOR);
++        TempSpell->EffectRadiusIndex[0] = 33;
++
++        // effect radius to tight, set to 18yards (from 15)
++        TempSpell = (SpellEntry*)GetSpellStore()->LookupEntry(SPELL_RAIN_OF_FIRE);
++        TempSpell->EffectRadiusIndex[0] = 19;
++        TempSpell->EffectRadiusIndex[1] = 19;
++        // spell range to high, set to 30yards (from 40)
++        TempSpell->rangeIndex = 4;
+         m_pInstance = ((ScriptedInstance*)pCreature->GetInstanceData());
+         Reset();
+     }
+ 
+     ScriptedInstance* m_pInstance;
+ 
+-    //uint32 m_uiRepentanceTimer;
++    uint32 m_uiHowlOfAzgalor_Timer;
++    uint32 m_uiDoom_Timer;
++    uint32 m_uiCleave_Timer;
++    uint32 m_uiRainOfFire_Timer;
++    uint32 m_uiEnrage_Timer;
+ 
+     void Reset()
+     {
++        m_uiHowlOfAzgalor_Timer = urand(12000, 18000);
++        m_uiDoom_Timer          = urand(45000, 50000);
++        m_uiCleave_Timer        = urand(7000, 15000);
++        m_uiRainOfFire_Timer    = 30000;
++        m_uiEnrage_Timer        = 10*MINUTE*IN_MILLISECONDS;
+     }
+ 
+     void KilledUnit(Unit* pVictim)
+@@ -84,13 +104,68 @@ struct MANGOS_DLL_DECL boss_azgalorAI : public ScriptedAI
+         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+             return;
+ 
+-        //if (m_uiRepentanceTimer < uiDiff)
+-        //{
+-        //    if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_REPENTANCE) == CAST_OK)
+-        //        m_uiRepentanceTimer = urand(25000, 35000);
+-        //}
+-        //else
+-        //    m_uiRepentanceTimer -= uiDiff;
++        // Cast Enrage
++        if (m_uiEnrage_Timer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature, SPELL_ENRAGE) == CAST_OK)
++                m_uiEnrage_Timer = 30000;
++        }
++        else
++            m_uiEnrage_Timer -= uiDiff;
++
++        // Cast Rain of Fire
++        if (m_uiRainOfFire_Timer < uiDiff)
++        {
++            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
++                if (DoCastSpellIfCan(pTarget, SPELL_RAIN_OF_FIRE) == CAST_OK)
++                    m_uiRainOfFire_Timer = 30000;
++        }
++        else
++            m_uiRainOfFire_Timer -= uiDiff;
++
++        // Cast Cleave
++        if (m_uiCleave_Timer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_CLEAVE) == CAST_OK)
++                m_uiCleave_Timer = urand(7000, 15000);
++        }
++        else
++            m_uiCleave_Timer -= uiDiff;
++
++        // Cast Howl of Azgalor
++        if (m_uiHowlOfAzgalor_Timer < uiDiff)
++        {
++            if (DoCastSpellIfCan(m_creature, SPELL_HOWL_OF_AZGALOR) == CAST_OK)
++                m_uiHowlOfAzgalor_Timer = urand(15000, 30000);
++        }
++        else
++            m_uiHowlOfAzgalor_Timer -= uiDiff;
++
++        // Cast Doom
++        if (m_uiDoom_Timer < uiDiff)
++        {
++            const ThreatList lTList = m_creature->getThreatManager().getThreatList();
++            std::vector<Player*> vPList;
++            // create target list with only players and without the creature target
++            for (ThreatList::const_iterator itr = lTList.begin(); itr != lTList.end(); ++itr)
++            {
++                if (Unit *pWho = m_creature->GetMap()->GetUnit((*itr)->getUnitGuid()))
++                {
++                    if (pWho->GetTypeId() == TYPEID_PLAYER && pWho->isAlive() && pWho->GetObjectGuid() != m_creature->getVictim()->GetObjectGuid())
++                        vPList.push_back((Player*)pWho);
++                }
++            }
++
++            // get rnd player from filtered target list
++            if (!vPList.empty())
++            {
++                if (Player* pTarget = vPList.at(urand(0, vPList.size() - 1)))
++                    if (DoCastSpellIfCan(pTarget, SPELL_DOOM) == CAST_OK)
++                        m_uiDoom_Timer = urand(45000, 50000);
++            }
++        }
++        else
++            m_uiDoom_Timer -= uiDiff;
+ 
+         DoMeleeAttackIfReady();
+     }
