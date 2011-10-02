@@ -1,5 +1,5 @@
 diff --git a/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp b/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp
-index 2e9f0e1..cc6fa1d 100644
+index 2e9f0e1..16aaf97 100644
 --- a/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp
 +++ b/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp
 @@ -36,13 +36,15 @@ enum
@@ -20,6 +20,15 @@ index 2e9f0e1..cc6fa1d 100644
      //Not much choise about these. We have to make own defintion on the direction/start-end point
      SPELL_BREATH_NORTH_TO_SOUTH = 17086,                    // 20x in "array"
      SPELL_BREATH_SOUTH_TO_NORTH = 18351,                    // 11x in "array"
+@@ -58,7 +60,7 @@ enum
+     SPELL_VISUAL_BREATH_A       = 4880,                     // Only and all of the above Breath spells (and their triggered spells) have these visuals
+     SPELL_VISUAL_BREATH_B       = 4919,
+ 
+-    //SPELL_BREATH                = 21131,                  // 8x in "array", different initial cast than the other arrays
++    SPELL_BREATH                = 21131,                  // 8x in "array", different initial cast than the other arrays
+ 
+     SPELL_BELLOWINGROAR         = 18431,
+     SPELL_HEATED_GROUND         = 22191,                    // TODO
 @@ -68,6 +70,8 @@ enum
  
      MAX_WHELPS_PER_PACK         = 40,
@@ -29,7 +38,16 @@ index 2e9f0e1..cc6fa1d 100644
      PHASE_START                 = 1,
      PHASE_BREATH                = 2,
      PHASE_END                   = 3,
-@@ -130,13 +134,18 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+@@ -102,6 +106,8 @@ static const float afSpawnLocations[3][3]=
+     {-126.57f, -214.609f, -71.446f}                         // guardians
+ };
+ 
++static const float afPlayerFleePos[3] = {-110.63f, -214.02f, -75.32f};
++
+ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+ {
+     boss_onyxiaAI(Creature* pCreature) : ScriptedAI(pCreature)
+@@ -130,13 +136,18 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
      uint32 m_uiFireballTimer;
      uint32 m_uiSummonWhelpsTimer;
      uint32 m_uiBellowingRoarTimer;
@@ -49,7 +67,7 @@ index 2e9f0e1..cc6fa1d 100644
      void Reset()
      {
          if (!IsCombatMovement())
-@@ -156,12 +165,15 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+@@ -156,12 +167,15 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
          m_uiFireballTimer = 15000;
          m_uiSummonWhelpsTimer = 15000;
          m_uiBellowingRoarTimer = 2000;                      // Immediately after landing
@@ -66,7 +84,7 @@ index 2e9f0e1..cc6fa1d 100644
      }
  
      void Aggro(Unit* pWho)
-@@ -188,6 +200,35 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+@@ -188,6 +202,35 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
              m_pInstance->SetData(TYPE_ONYXIA, DONE);
      }
  
@@ -102,7 +120,7 @@ index 2e9f0e1..cc6fa1d 100644
      void JustSummoned(Creature* pSummoned)
      {
          if (!m_pInstance)
-@@ -207,6 +248,12 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+@@ -207,6 +250,12 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
              ++m_uiSummonCount;
      }
  
@@ -115,7 +133,7 @@ index 2e9f0e1..cc6fa1d 100644
      void SummonedMovementInform(Creature* pSummoned, uint32 uiMoveType, uint32 uiPointId)
      {
          if (uiMoveType != POINT_MOTION_TYPE || uiPointId != 1 || !m_creature->getVictim())
-@@ -260,6 +307,64 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+@@ -260,21 +309,105 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
          }
      }
  
@@ -171,21 +189,42 @@ index 2e9f0e1..cc6fa1d 100644
 +                }
 +            } 
 +        }
-+        // if spell occured, cleare crackmap and set timer to real time.
++        // if spell occured, cleare crackmap and set timer to high time.
 +        m_uiCrackIndex = 0;
 +        m_Crackmap.clear();
 +        m_uiErruptionTimer = 99999999;
 +    }
 +
++    bool CheckPlayerPos()
++    {
++        const ThreatList TList = m_creature->getThreatManager().getThreatList();
++        for (ThreatList::const_iterator itr = TList.begin(); itr != TList.end(); ++itr)
++        {
++            Unit *pWho = m_creature->GetMap()->GetUnit((*itr)->getUnitGuid());
++            if (pWho && pWho->isAlive() && pWho->GetObjectGuid().IsPlayer() && pWho->GetDistance(afPlayerFleePos[0], afPlayerFleePos[1], afPlayerFleePos[2]) < 7)
++                return true;
++        }
++        return false;
++    }
++
      void UpdateAI(const uint32 uiDiff)
      {
          if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-@@ -271,10 +376,20 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+             return;
+ 
++        // check if player is on the bridge, if so, onyxia casts a breath on the bridge
++        if (CheckPlayerPos())
++            DoCastSpellIfCan(m_creature, SPELL_BREATH);
++
+         switch (m_uiPhase)
+         {
+             case PHASE_END:                                 // Here is room for additional summoned whelps and Erruption
                  if (m_uiBellowingRoarTimer < uiDiff)
                  {
                      if (DoCastSpellIfCan(m_creature, SPELL_BELLOWINGROAR) == CAST_OK)
+-                        m_uiBellowingRoarTimer = 30000;
 +                    {
-                         m_uiBellowingRoarTimer = 30000;
++                        m_uiBellowingRoarTimer = urand(10000, 35000);
 +                        m_uiErruptionTimer = 1000;
 +                    }
                  }
@@ -201,7 +240,7 @@ index 2e9f0e1..cc6fa1d 100644
                  // no break, phase 3 will use same abilities as in 1
              case PHASE_START:
              {
-@@ -423,16 +538,17 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+@@ -423,16 +556,17 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
                          m_uiSummonWhelpsTimer -= uiDiff;
                  }
  
@@ -229,7 +268,7 @@ index 2e9f0e1..cc6fa1d 100644
  
                  break;
              }
-@@ -464,6 +580,7 @@ void AddSC_boss_onyxia()
+@@ -464,6 +598,7 @@ void AddSC_boss_onyxia()
      pNewScript->Name = "boss_onyxia";
      pNewScript->GetAI = &GetAI_boss_onyxia;
      pNewScript->RegisterSelf();
@@ -290,67 +329,3 @@ index 2f493a7..8b34d61 100644
  };
  
  #endif
-diff --git a/scripts/outland/hellfire_peninsula.cpp b/scripts/outland/hellfire_peninsula.cpp
-index 7b44a54..c09a200 100644
---- a/scripts/outland/hellfire_peninsula.cpp
-+++ b/scripts/outland/hellfire_peninsula.cpp
-@@ -37,6 +37,7 @@ EndContentData */
- 
- #include "precompiled.h"
- #include "escort_ai.h"
-+#include "pet_ai.h"
- 
- /*######
- ## npc_aeranas
-@@ -733,6 +734,41 @@ bool QuestAccept_npc_wounded_blood_elf(Player* pPlayer, Creature* pCreature, con
-     return true;
- }
- 
-+/*######
-+## npc_fel_guard_hound
-+######*/
-+
-+enum
-+{
-+	SPELL_CREATE_POODAD = 37688,
-+	NPC_DERANGED_HELBOAR= 16863,
-+};
-+
-+struct MANGOS_DLL_DECL npc_fel_guard_houndAI : public ScriptedPetAI
-+{
-+    npc_fel_guard_houndAI(Creature* pCreature) : ScriptedPetAI(pCreature) { Reset(); }
-+
-+    void Reset() { }
-+
-+    void OwnerKilledUnit(Unit* pVictim)
-+    {
-+        if (pVictim->GetTypeId() == TYPEID_UNIT && pVictim->GetEntry() == NPC_DERANGED_HELBOAR)
-+        {
-+            // Distance expected?
-+            if (m_creature->IsWithinDistInMap(pVictim, 10.0f))
-+            {
-+			    if (urand(1, 100) <= 35)
-+                    DoCastSpellIfCan(m_creature, SPELL_CREATE_POODAD);
-+            }
-+        }
-+    }
-+};
-+
-+CreatureAI* GetAI_npc_fel_guard_hound(Creature* pCreature)
-+{
-+    return new npc_fel_guard_houndAI(pCreature);
-+}
-+
- void AddSC_hellfire_peninsula()
- {
-     Script *newscript;
-@@ -800,4 +836,9 @@ void AddSC_hellfire_peninsula()
-     newscript->GetAI = &GetAI_npc_wounded_blood_elf;
-     newscript->pQuestAcceptNPC = &QuestAccept_npc_wounded_blood_elf;
-     newscript->RegisterSelf();
-+
-+    newscript = new Script;
-+    newscript->Name = "npc_fel_guard_hound";
-+    newscript->GetAI = &GetAI_npc_fel_guard_hound;
-+    newscript->RegisterSelf();
- }
