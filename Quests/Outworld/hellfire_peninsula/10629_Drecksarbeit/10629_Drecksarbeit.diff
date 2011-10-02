@@ -1,8 +1,8 @@
-Index: scripts/outland/hellfire_peninsula.cpp
-===================================================================
---- scripts/outland/hellfire_peninsula.cpp	(revision 1958)
-+++ scripts/outland/hellfire_peninsula.cpp	(working copy)
-@@ -37,6 +37,7 @@
+diff --git a/scripts/outland/hellfire_peninsula.cpp b/scripts/outland/hellfire_peninsula.cpp
+index 7b44a54..c09a200 100644
+--- a/scripts/outland/hellfire_peninsula.cpp
++++ b/scripts/outland/hellfire_peninsula.cpp
+@@ -37,6 +37,7 @@ EndContentData */
  
  #include "precompiled.h"
  #include "escort_ai.h"
@@ -10,7 +10,7 @@ Index: scripts/outland/hellfire_peninsula.cpp
  
  /*######
  ## npc_aeranas
-@@ -743,6 +744,41 @@
+@@ -733,6 +734,41 @@ bool QuestAccept_npc_wounded_blood_elf(Player* pPlayer, Creature* pCreature, con
      return true;
  }
  
@@ -33,14 +33,14 @@ Index: scripts/outland/hellfire_peninsula.cpp
 +    void OwnerKilledUnit(Unit* pVictim)
 +    {
 +        if (pVictim->GetTypeId() == TYPEID_UNIT && pVictim->GetEntry() == NPC_DERANGED_HELBOAR)
-+		{
++        {
 +            // Distance expected?
 +            if (m_creature->IsWithinDistInMap(pVictim, 10.0f))
 +            {
 +			    if (urand(1, 100) <= 35)
-+				    DoCastSpellIfCan(m_creature, SPELL_CREATE_POODAD);
++                    DoCastSpellIfCan(m_creature, SPELL_CREATE_POODAD);
 +            }
-+		}
++        }
 +    }
 +};
 +
@@ -52,12 +52,12 @@ Index: scripts/outland/hellfire_peninsula.cpp
  void AddSC_hellfire_peninsula()
  {
      Script *newscript;
-@@ -810,4 +846,9 @@
+@@ -800,4 +836,9 @@ void AddSC_hellfire_peninsula()
      newscript->GetAI = &GetAI_npc_wounded_blood_elf;
      newscript->pQuestAcceptNPC = &QuestAccept_npc_wounded_blood_elf;
      newscript->RegisterSelf();
 +
-+	newscript = new Script;
++    newscript = new Script;
 +    newscript->Name = "npc_fel_guard_hound";
 +    newscript->GetAI = &GetAI_npc_fel_guard_hound;
 +    newscript->RegisterSelf();

@@ -21,7 +21,7 @@ index b98841f..8199999 100644
  
  #endif
 diff --git a/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp b/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp
-index a7b0f74..f85b23e 100644
+index a7b0f74..a0f5ed5 100644
 --- a/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp
 +++ b/scripts/eastern_kingdoms/blackwing_lair/boss_razorgore.cpp
 @@ -16,13 +16,14 @@
@@ -41,7 +41,7 @@ index a7b0f74..f85b23e 100644
  
  // Razorgore Phase 2 Script
  enum
-@@ -38,13 +39,399 @@ enum
+@@ -38,13 +39,403 @@ enum
      SPELL_WARSTOMP              = 24375,
      SPELL_FIREBALL_VOLLEY       = 22425,
      SPELL_CONFLAGRATION         = 23023,
@@ -71,8 +71,8 @@ index a7b0f74..f85b23e 100644
 +    PHASE_ONE,
 +    PHASE_FIGHT,
 +    PHASE_DONE,
-+};
-+
+ };
+ 
 +struct sSpawnLocation
 +{
 +    float m_fX, m_fY, m_fZ;
@@ -156,12 +156,15 @@ index a7b0f74..f85b23e 100644
 +    uint32 m_uiEggCounter;
 +    Phases m_Phase;
 +
++    bool m_bIsCharmed;
++
 +    std::list<ObjectGuid> m_uiDragonkinGUIDs;
 +    std::list<ObjectGuid> m_uiOrkGUIDs;
 +    std::list<ObjectGuid> m_uiDragonEggGUIDs;
 +
 +    void Reset()
 +    {
++        m_bIsCharmed            = false;
 +        m_uiEggCounter          = 0;
 +
 +        if (m_pInstance && m_pInstance->GetData(TYPE_RAZORGORE) != DONE)
@@ -199,7 +202,6 @@ index a7b0f74..f85b23e 100644
 +            if (Creature *pRazorgore = m_pInstance->GetSingleCreatureFromStorage(NPC_RAZORGORE))
 +            {
 +                pRazorgore->MonsterYell(SAY_PHASE_FIGHT, 0);
-+                m_creature->CastSpell(pRazorgore, SPELL_POSSES, true);
 +                pRazorgore->RemoveAllAuras();                                                       // remove mind controle from razorgore
 +                pRazorgore->CastSpell(pRazorgore, SPELL_WARMING_FLAMES, true);
 +            }
@@ -246,7 +248,7 @@ index a7b0f74..f85b23e 100644
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +            {
-+                if (pCreature->GetDistance(aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ) < 3)
++                if (pCreature->GetDistance(aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ) < 5)
 +                    pCreature->RemoveFromWorld();
 +            }
 +        }
@@ -255,7 +257,7 @@ index a7b0f74..f85b23e 100644
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
 +            {
-+                if (pCreature->GetDistance(aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ) < 3)
++                if (pCreature->GetDistance(aAddCombatStartPosition.m_fX, aAddCombatStartPosition.m_fY, aAddCombatStartPosition.m_fZ) < 5)
 +                    pCreature->RemoveFromWorld();
 +            }
 +        }
@@ -317,13 +319,13 @@ index a7b0f74..f85b23e 100644
 +        for (std::list<ObjectGuid>::iterator itr = m_uiDragonkinGUIDs.begin(); itr != m_uiDragonkinGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
-+                m_creature->ForcedDespawn();
++                m_creature->RemoveFromWorld();
 +        }
 +
 +        for (std::list<ObjectGuid>::iterator itr = m_uiOrkGUIDs.begin(); itr != m_uiOrkGUIDs.end(); ++itr)
 +        {
 +            if (Creature *pCreature = m_creature->GetMap()->GetCreature(*itr))
-+                m_creature->ForcedDespawn();
++                m_creature->RemoveFromWorld();
 +        }
 +        m_uiDragonkinGUIDs.clear();
 +        m_uiOrkGUIDs.clear();
@@ -373,7 +375,7 @@ index a7b0f74..f85b23e 100644
 +        if (!pRazorgore->HasAura(SPELL_POSSES) && m_Phase != PHASE_FIGHT && m_Phase != PHASE_DONE)
 +            m_creature->CastSpell(pRazorgore, SPELL_POSSES, true);
 +
-+        if (m_Phase == PHASE_NONE)
++        if (m_Phase == PHASE_NONE || m_Phase == PHASE_DONE)
 +            return;
 +        // no adds spawn during fight phase
 +        else if (m_Phase == PHASE_FIGHT)
@@ -412,14 +414,16 @@ index a7b0f74..f85b23e 100644
 +                            m_uiOrkGUIDs.push_back(pCreature->GetObjectGuid());
 +                    }
 +                }
++                if (pCreature)
++                    pCreature->GetMotionMaster()->MoveIdle();
 +            }
 +            m_uiAddSummonTimer = 15000;
 +        }
 +        else
 +            m_uiAddSummonTimer -= uiDiff;
 +    }
- };
- 
++};
++
 +CreatureAI* GetAI_mob_blackwing_orb_trigger(Creature* pCreature)
 +{
 +    return new mob_blackwing_orb_triggerAI(pCreature);
@@ -441,7 +445,7 @@ index a7b0f74..f85b23e 100644
          Reset();
      }
  
-@@ -57,18 +444,24 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+@@ -57,32 +448,53 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
  
      void Reset()
      {
@@ -452,27 +456,35 @@ index a7b0f74..f85b23e 100644
          m_uiFireballVolleyTimer = 7000;
  
      }
--
+ 
 -    void Aggro(Unit* pWho)
-+ 
-+    void DamageTaken(Unit *pWho, uint32 &uiDmg)
-     {
+-    {
 -        // TODO Temporarily add this InstData setting, must be started with Phase 1 which is not yet implemented
 -        if (m_pInstance)
 -            m_pInstance->SetData(TYPE_RAZORGORE, IN_PROGRESS);
-+        if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER)->AI())
+-    }
+-
+     void JustDied(Unit* pKiller)
+     {
++        // if phase = PHASE_ONE kill all enemy targets and respawn
++        if (Creature* pTrigger = m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER))
 +        {
-+            if (pTriggerAI->m_Phase != PHASE_FIGHT && uiDmg >= m_creature->GetHealth())
++            if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pTrigger->AI())
 +            {
-+                uiDmg = 0;
-+                m_creature->MonsterYell(SAY_DEATH, 0);
-+                m_creature->CastSpell(m_creature, SPELL_FIREBALL, true);
++                if (pTriggerAI->m_Phase != PHASE_FIGHT)
++                {
++                    m_creature->MonsterYell(SAY_DEATH, 0);
++                    m_creature->CastSpell(m_creature, SPELL_FIREBALL, true);
++                    m_creature->Respawn();
++                    pTriggerAI->Reset();
++                    if (m_pInstance)
++                        m_pInstance->SetData(TYPE_RAZORGORE, FAIL);
++                    return;
++                }
 +            }
 +        }
-     }
- 
-     void JustDied(Unit* pKiller)
-@@ -76,13 +469,22 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
++
++        // if killed in phase PHASE_FIGHT, fight ends, and event is done
          if (m_pInstance)
              m_pInstance->SetData(TYPE_RAZORGORE, DONE);
  
@@ -490,13 +502,24 @@ index a7b0f74..f85b23e 100644
 +        {
              m_pInstance->SetData(TYPE_RAZORGORE, FAIL);
 +            if (Creature *pOrbTrigger = m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER))
-+                    if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pOrbTrigger->AI())
-+                        pTriggerAI->Reset();
++                if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pOrbTrigger->AI())
++                    pTriggerAI->Reset();
 +        }
      }
  
      void UpdateAI(const uint32 uiDiff)
-@@ -121,7 +523,7 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+@@ -90,6 +502,10 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
+         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+             return;
+ 
++        if (Creature *pOrbTrigger = m_pInstance->GetSingleCreatureFromStorage(NPC_ORB_TRIGGER))
++            if (mob_blackwing_orb_triggerAI *pTriggerAI = (mob_blackwing_orb_triggerAI*)pOrbTrigger->AI())
++                pTriggerAI->m_bIsCharmed = false;
++
+         // Cleave
+         if (m_uiCleaveTimer < uiDiff)
+         {
+@@ -121,7 +537,7 @@ struct MANGOS_DLL_DECL boss_razorgoreAI : public ScriptedAI
          if (m_uiConflagrationTimer < uiDiff)
          {
              if (DoCastSpellIfCan(m_creature, SPELL_CONFLAGRATION) == CAST_OK)
@@ -505,7 +528,7 @@ index a7b0f74..f85b23e 100644
          }
          else
              m_uiConflagrationTimer -= uiDiff;
-@@ -144,12 +546,188 @@ CreatureAI* GetAI_boss_razorgore(Creature* pCreature)
+@@ -144,12 +560,188 @@ CreatureAI* GetAI_boss_razorgore(Creature* pCreature)
      return new boss_razorgoreAI(pCreature);
  }
  
@@ -636,8 +659,8 @@ index a7b0f74..f85b23e 100644
 +            return true;
 +
 +        pCreature->AddThreat(pPlayer, 50000);
++        pTriggerAI->m_bIsCharmed = true;
 +        pPlayer->CastSpell(pCreature, SPELL_DRAGON_ORB, true);
-+        pCreature->AddThreat(pPlayer, 50000);
 +    }
 +   else
 +        return true;
@@ -697,7 +720,7 @@ index a7b0f74..f85b23e 100644
 +    pNewScript->RegisterSelf();
 + }
 diff --git a/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp b/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
-index 7493116..ae1ea78 100644
+index 7493116..8c0021e 100644
 --- a/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
 +++ b/scripts/eastern_kingdoms/blackwing_lair/instance_blackwing_lair.cpp
 @@ -53,8 +53,14 @@ void instance_blackwing_lair::OnCreatureCreate(Creature* pCreature)
@@ -744,3 +767,12 @@ index 7493116..ae1ea78 100644
              break;
          case TYPE_VAELASTRASZ:
              m_auiEncounter[uiType] = uiData;
+@@ -164,7 +185,7 @@ void instance_blackwing_lair::Load(const char* chrIn)
+ 
+     for(uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+     {
+-        if (m_auiEncounter[i] == IN_PROGRESS)
++        if (m_auiEncounter[i] == IN_PROGRESS || m_auiEncounter[i] == FAIL)
+             m_auiEncounter[i] = NOT_STARTED;
+     }
+ 

@@ -1,0 +1,356 @@
+diff --git a/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp b/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp
+index 2e9f0e1..cc6fa1d 100644
+--- a/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp
++++ b/scripts/kalimdor/onyxias_lair/boss_onyxia.cpp
+@@ -36,13 +36,15 @@ enum
+     SPELL_WINGBUFFET_H          = 69293,
+     SPELL_FLAMEBREATH           = 18435,
+     SPELL_FLAMEBREATH_H         = 68970,
+-    SPELL_CLEAVE                = 68868,
+-    SPELL_TAILSWEEP             = 68867,
++    SPELL_CLEAVE                = 16044,
++    SPELL_TAILSWEEP             = 15847,
+     SPELL_TAILSWEEP_H           = 69286,
+     SPELL_KNOCK_AWAY            = 19633,
+     SPELL_FIREBALL              = 18392,
+     SPELL_FIREBALL_H            = 68926,
+ 
++    SPELL_ERRUPTION             = 17731,
++
+     //Not much choise about these. We have to make own defintion on the direction/start-end point
+     SPELL_BREATH_NORTH_TO_SOUTH = 17086,                    // 20x in "array"
+     SPELL_BREATH_SOUTH_TO_NORTH = 18351,                    // 11x in "array"
+@@ -68,6 +70,8 @@ enum
+ 
+     MAX_WHELPS_PER_PACK         = 40,
+ 
++    NPC_ONYXIA_LAVACRACK_DUMMY  = 50000,
++
+     PHASE_START                 = 1,
+     PHASE_BREATH                = 2,
+     PHASE_END                   = 3,
+@@ -130,13 +134,18 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+     uint32 m_uiFireballTimer;
+     uint32 m_uiSummonWhelpsTimer;
+     uint32 m_uiBellowingRoarTimer;
++    uint32 m_uiErruptionTimer;
+     uint32 m_uiWhelpTimer;
+-    uint32 m_uiSummonGuardTimer;
++    //uint32 m_uiSummonGuardTimer;
+ 
+     uint8 m_uiSummonCount;
+ 
+     bool m_bIsSummoningWhelps;
+ 
++    // store lavacrack guids rnd
++    std::map<uint32, ObjectGuid> m_Crackmap;
++    uint32 m_uiCrackIndex;
++
+     void Reset()
+     {
+         if (!IsCombatMovement())
+@@ -156,12 +165,15 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+         m_uiFireballTimer = 15000;
+         m_uiSummonWhelpsTimer = 15000;
+         m_uiBellowingRoarTimer = 2000;                      // Immediately after landing
++        m_uiErruptionTimer = 99999999;                      // get real time from SPELL_BELLOWINGROAR block
+         m_uiWhelpTimer = 1000;
+-        m_uiSummonGuardTimer = 15000;
++        //m_uiSummonGuardTimer = 15000;
+ 
+         m_uiSummonCount = 0;
+ 
+         m_bIsSummoningWhelps = false;
++
++        m_uiCrackIndex = 0;
+     }
+ 
+     void Aggro(Unit* pWho)
+@@ -188,6 +200,35 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+             m_pInstance->SetData(TYPE_ONYXIA, DONE);
+     }
+ 
++    void AttackNearestTarget(Creature* pCreature)
++    {
++        float minRange = VISIBLE_RANGE;
++        float range;
++        Player* target = NULL;
++
++        Map::PlayerList const& players = m_creature->GetMap()->GetPlayers();
++        for(Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
++        {
++            if (Player* i_pl = itr->getSource())
++            {
++                if (i_pl->isTargetableForAttack())
++                {
++                    range = i_pl->GetDistance(pCreature);
++                    if (range < minRange)
++                    {
++                        minRange = range;
++                        target = i_pl;
++                    }
++                }
++            }
++        }
++
++        if (!target)
++            return;
++
++        pCreature->AI()->AttackStart(target);
++    }
++
+     void JustSummoned(Creature* pSummoned)
+     {
+         if (!m_pInstance)
+@@ -207,6 +248,12 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+             ++m_uiSummonCount;
+     }
+ 
++    void JustExceededSpawnDelay(Creature *pCreature)
++    {
++        if (pCreature->GetEntry() == NPC_ONYXIA_WHELP)
++            AttackNearestTarget(pCreature);
++    }
++
+     void SummonedMovementInform(Creature* pSummoned, uint32 uiMoveType, uint32 uiPointId)
+     {
+         if (uiMoveType != POINT_MOTION_TYPE || uiPointId != 1 || !m_creature->getVictim())
+@@ -260,6 +307,64 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+         }
+     }
+ 
++    void LavaCracks()
++    {
++        if (m_pInstance)
++        {
++            // get lavacracks and sort rnd
++            if (m_Crackmap.empty())
++            {
++                GUIDList LavacrackGUIDs = m_pInstance->GetLavacrackList();
++                std::pair<uint32, ObjectGuid> CrackmapPair;
++                for (GUIDList::const_iterator itr = LavacrackGUIDs.begin(); itr != LavacrackGUIDs.end(); ++itr)
++                {
++                    uint32 rnd = urand(1, 999999);
++                    while(m_Crackmap.find(rnd) != m_Crackmap.end())
++                        rnd++;
++
++                    CrackmapPair = std::make_pair(rnd, *itr);
++                    m_Crackmap.insert(CrackmapPair);
++                }
++                return;
++            }
++            // iterate lavacracks, summon trigger and cast spell
++            else
++            {
++                uint8 i = 0;
++                std::map<uint32, ObjectGuid>::const_iterator itr = NULL;
++                if (!m_uiCrackIndex)
++                    itr = m_Crackmap.begin();
++                else
++                    itr = m_Crackmap.find(m_uiCrackIndex);
++                for (; itr != m_Crackmap.end(); ++itr)
++                {
++                    WorldObject *Caster = m_creature->GetMap()->GetWorldObject(itr->second);
++                    if (Caster)
++                    {
++                        Creature *pCreature = m_creature->SummonCreature(NPC_ONYXIA_LAVACRACK_DUMMY, Caster->GetPositionX(), Caster->GetPositionY(), Caster->GetPositionZ(), Caster->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN, 100);
++                        if (pCreature)
++                            pCreature->CastSpell(pCreature, SPELL_ERRUPTION, true);
++                        m_creature->SendGameObjectCustomAnim(Caster->GetObjectGuid());
++                    }
++                    i++;
++                    if (i >= 5)
++                    {
++                        m_uiErruptionTimer = 250;
++                        ++itr;
++                        if (itr != m_Crackmap.end())
++                            m_uiCrackIndex = itr->first;
++
++                        return;
++                    }
++                }
++            } 
++        }
++        // if spell occured, cleare crackmap and set timer to real time.
++        m_uiCrackIndex = 0;
++        m_Crackmap.clear();
++        m_uiErruptionTimer = 99999999;
++    }
++
+     void UpdateAI(const uint32 uiDiff)
+     {
+         if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+@@ -271,10 +376,20 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+                 if (m_uiBellowingRoarTimer < uiDiff)
+                 {
+                     if (DoCastSpellIfCan(m_creature, SPELL_BELLOWINGROAR) == CAST_OK)
++                    {
+                         m_uiBellowingRoarTimer = 30000;
++                        m_uiErruptionTimer = 1000;
++                    }
+                 }
+                 else
+                     m_uiBellowingRoarTimer -= uiDiff;
++
++                if (m_uiErruptionTimer < uiDiff)
++                {
++                    LavaCracks();
++                }
++                else
++                    m_uiErruptionTimer -= uiDiff;
+                 // no break, phase 3 will use same abilities as in 1
+             case PHASE_START:
+             {
+@@ -423,16 +538,17 @@ struct MANGOS_DLL_DECL boss_onyxiaAI : public ScriptedAI
+                         m_uiSummonWhelpsTimer -= uiDiff;
+                 }
+ 
+-                if (m_uiSummonGuardTimer < uiDiff)
+-                {
+-                    if (!m_creature->IsNonMeleeSpellCasted(false))
+-                    {
+-                        m_creature->CastSpell(afSpawnLocations[2][0], afSpawnLocations[2][1], afSpawnLocations[2][2], SPELL_SUMMON_LAIR_GUARD, true);
+-                        m_uiSummonGuardTimer = 30000;
+-                    }
+-                }
+-                else
+-                    m_uiSummonGuardTimer -= uiDiff;
++                // not in 2.4.3
++                //if (m_uiSummonGuardTimer < uiDiff)
++                //{
++                //    if (!m_creature->IsNonMeleeSpellCasted(false))
++                //    {
++                //        m_creature->CastSpell(afSpawnLocations[2][0], afSpawnLocations[2][1], afSpawnLocations[2][2], SPELL_SUMMON_LAIR_GUARD, true);
++                //        m_uiSummonGuardTimer = 30000;
++                //    }
++                //}
++                //else
++                //    m_uiSummonGuardTimer -= uiDiff;
+ 
+                 break;
+             }
+@@ -464,6 +580,7 @@ void AddSC_boss_onyxia()
+     pNewScript->Name = "boss_onyxia";
+     pNewScript->GetAI = &GetAI_boss_onyxia;
+     pNewScript->RegisterSelf();
++
+ }
+ 
+ /*
+diff --git a/scripts/kalimdor/onyxias_lair/instance_onyxias_lair.cpp b/scripts/kalimdor/onyxias_lair/instance_onyxias_lair.cpp
+index f7dde0a..cedbdb7 100644
+--- a/scripts/kalimdor/onyxias_lair/instance_onyxias_lair.cpp
++++ b/scripts/kalimdor/onyxias_lair/instance_onyxias_lair.cpp
+@@ -55,6 +55,16 @@ void instance_onyxias_lair::OnCreatureCreate(Creature* pCreature)
+     }
+ }
+ 
++void instance_onyxias_lair::OnObjectCreate(GameObject* pGO)
++{
++    switch(pGO->GetEntry())
++    {
++        case GO_LAVACRACK:
++            m_LavacrackGUIDs.push_back(pGO->GetObjectGuid());
++            break;
++    }
++}
++
+ void instance_onyxias_lair::SetData(uint32 uiType, uint32 uiData)
+ {
+     if (uiType != TYPE_ONYXIA)
+diff --git a/scripts/kalimdor/onyxias_lair/onyxias_lair.h b/scripts/kalimdor/onyxias_lair/onyxias_lair.h
+index 2f493a7..8b34d61 100644
+--- a/scripts/kalimdor/onyxias_lair/onyxias_lair.h
++++ b/scripts/kalimdor/onyxias_lair/onyxias_lair.h
+@@ -16,6 +16,8 @@ enum
+     NPC_ONYXIA_WHELP            = 11262,
+     NPC_ONYXIA_TRIGGER          = 12758,
+ 
++    GO_LAVACRACK                = 211054,
++
+     // Achievement Related
+     TIME_LIMIT_MANY_WHELPS      = 10,                       // 10s timeframe to kill 50 whelps after liftoff
+     ACHIEV_CRIT_REQ_MANY_WHELPS = 50,
+@@ -37,6 +39,9 @@ class MANGOS_DLL_DECL instance_onyxias_lair : public ScriptedInstance
+         bool IsEncounterInProgress() const;
+ 
+         void OnCreatureCreate(Creature* pCreature);
++        void OnObjectCreate(GameObject* pGO);
++
++        const GUIDList& GetLavacrackList() { return m_LavacrackGUIDs; }
+ 
+         void SetData(uint32 uiType, uint32 uiData);
+ 
+@@ -47,6 +52,8 @@ class MANGOS_DLL_DECL instance_onyxias_lair : public ScriptedInstance
+         uint32 m_uiAchievWhelpsCount;
+ 
+         time_t m_tPhaseTwoStart;
++
++        GUIDList m_LavacrackGUIDs;
+ };
+ 
+ #endif
+diff --git a/scripts/outland/hellfire_peninsula.cpp b/scripts/outland/hellfire_peninsula.cpp
+index 7b44a54..c09a200 100644
+--- a/scripts/outland/hellfire_peninsula.cpp
++++ b/scripts/outland/hellfire_peninsula.cpp
+@@ -37,6 +37,7 @@ EndContentData */
+ 
+ #include "precompiled.h"
+ #include "escort_ai.h"
++#include "pet_ai.h"
+ 
+ /*######
+ ## npc_aeranas
+@@ -733,6 +734,41 @@ bool QuestAccept_npc_wounded_blood_elf(Player* pPlayer, Creature* pCreature, con
+     return true;
+ }
+ 
++/*######
++## npc_fel_guard_hound
++######*/
++
++enum
++{
++	SPELL_CREATE_POODAD = 37688,
++	NPC_DERANGED_HELBOAR= 16863,
++};
++
++struct MANGOS_DLL_DECL npc_fel_guard_houndAI : public ScriptedPetAI
++{
++    npc_fel_guard_houndAI(Creature* pCreature) : ScriptedPetAI(pCreature) { Reset(); }
++
++    void Reset() { }
++
++    void OwnerKilledUnit(Unit* pVictim)
++    {
++        if (pVictim->GetTypeId() == TYPEID_UNIT && pVictim->GetEntry() == NPC_DERANGED_HELBOAR)
++        {
++            // Distance expected?
++            if (m_creature->IsWithinDistInMap(pVictim, 10.0f))
++            {
++			    if (urand(1, 100) <= 35)
++                    DoCastSpellIfCan(m_creature, SPELL_CREATE_POODAD);
++            }
++        }
++    }
++};
++
++CreatureAI* GetAI_npc_fel_guard_hound(Creature* pCreature)
++{
++    return new npc_fel_guard_houndAI(pCreature);
++}
++
+ void AddSC_hellfire_peninsula()
+ {
+     Script *newscript;
+@@ -800,4 +836,9 @@ void AddSC_hellfire_peninsula()
+     newscript->GetAI = &GetAI_npc_wounded_blood_elf;
+     newscript->pQuestAcceptNPC = &QuestAccept_npc_wounded_blood_elf;
+     newscript->RegisterSelf();
++
++    newscript = new Script;
++    newscript->Name = "npc_fel_guard_hound";
++    newscript->GetAI = &GetAI_npc_fel_guard_hound;
++    newscript->RegisterSelf();
+ }

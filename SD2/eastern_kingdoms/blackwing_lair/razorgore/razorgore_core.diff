@@ -53,8 +53,8 @@ index 31f7ca7..b10b111 100644
                          return false;
  
 +                    // Possess and Possess
-+                    if ((spellInfo_1->Id == 18832 && spellInfo_2->Id == 23014) ||
-+                        (spellInfo_2->Id == 18832 && spellInfo_1->Id == 23014))
++                    if ((spellInfo_1->Id == 19832 && spellInfo_2->Id == 23014) ||
++                        (spellInfo_2->Id == 19832 && spellInfo_1->Id == 23014))
 +                         return false;
 +
                      break;
